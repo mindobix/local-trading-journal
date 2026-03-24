@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(start c:/Users/gsubu/trading-journal/index.html)",
+      "Bash(python -m http.server 3000)",
+      "Bash(npx --version)",
+      "Bash(npx serve:*)",
+      "Bash(start c:/Users/gsubu/LocalWebApps/local-trading-journal/index.html)"
+    ]
+  }
+}

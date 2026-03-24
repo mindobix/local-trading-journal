@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LocalTradeJournal</title>
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+
+<!-- ─── HEADER ─── -->
+<header class="header">
+  <div class="logo">Local<span class="logo-sep"> &rsaquo; </span><span class="logo-trade">Trade</span>Journal</div>
+  <nav class="nav">
+    <button class="nav-btn active" id="nav-cal" onclick="switchView('calendar')">Calendar</button>
+    <button class="nav-btn" id="nav-trades" onclick="switchView('trades')">Trades</button>
+  </nav>
+  <div class="header-spacer"></div>
+  <button class="header-util-btn csv-dl-btn" onclick="downloadCSVTemplate()" title="Download a CSV template with example trades">&#8681; CSV Template</button>
+  <button class="header-util-btn csv-ul-btn" onclick="document.getElementById('csv-import-input').click()" title="Import trades from a CSV file">&#8679; Import CSV</button>
+  <input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSVTrades(event)">
+  <button class="header-util-btn backup-btn" onclick="backupData()" title="Download a backup of all your trades">&#8681; Backup</button>
+  <button class="header-util-btn restore-btn" onclick="document.getElementById('restore-input').click()" title="Restore trades from a backup file">&#8679; Restore</button>
+  <input type="file" id="restore-input" accept=".json" style="display:none" onchange="restoreData(event)">
+  <button class="header-add-btn" onclick="openAddGlobal()">+ Add Trade</button>
+</header>
+
+<!-- ─── STATS BAR ─── -->
+<div class="stats-bar" id="stats-bar"></div>
+
+<!-- ─── MAIN VIEWS ─── -->
+<div class="main">
+
+  <!-- Calendar View -->
+  <div id="view-cal">
+    <div class="cal-nav">
+      <button class="arrow-btn" onclick="shiftMonth(-1)">&#8592;</button>
+      <button class="arrow-btn" onclick="shiftMonth(1)">&#8594;</button>
+      <div class="month-label" id="month-label"></div>
+      <button class="today-btn" onclick="jumpToday()">Today</button>
+      <div id="monthly-pnl" class="monthly-pnl"></div>
+    </div>
+    <div class="cal-week-layout">
+      <div class="cal-main">
+        <div class="cal-grid" id="cal-grid"></div>
+      </div>
+      <div class="cal-divider"></div>
+      <div class="weekly-panel" id="weekly-summary"></div>
+    </div>
+  </div>
+
+  <!-- Trades View -->
+  <div id="view-trades" style="display:none">
+    <div class="toolbar">
+      <input type="text" id="srch" placeholder="Search symbol..." oninput="renderTrades()">
+      <select id="filter-type" onchange="renderTrades()">
+        <option value="">All Types</option>
+        <option value="stock">Stock</option>
+        <option value="option">Option</option>
+      </select>
+      <select id="filter-side" onchange="renderTrades()">
+        <option value="">All Sides</option>
+        <option value="long">Long</option>
+        <option value="short">Short</option>
+      </select>
+      <select id="filter-date" onchange="onDateFilterChange()">
+        <option value="">All Dates</option>
+        <option value="daily">Today</option>
+        <option value="weekly">This Week</option>
+        <option value="monthly">This Month</option>
+        <option value="ytd">Year to Date</option>
+        <option value="custom">Custom Range</option>
+      </select>
+      <div id="custom-range" style="display:none;gap:6px;align-items:center">
+        <input type="date" id="filter-from" onchange="renderTrades()" style="min-width:0;width:136px">
+        <span style="color:var(--text-muted);font-size:12px">to</span>
+        <input type="date" id="filter-to" onchange="renderTrades()" style="min-width:0;width:136px">
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th onclick="sortBy('date')">Date &#8597;</th>
+            <th onclick="sortBy('symbol')">Symbol &#8597;</th>
+            <th>Side</th>
+            <th>Type</th>
+            <th>Legs</th>
+            <th onclick="sortBy('pnl')">Net P&amp;L &#8597;</th>
+            <th>Notes</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="trades-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<!-- ─── DAY MODAL ─── -->
+<div class="overlay" id="day-overlay">
+  <div class="modal" id="day-modal">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-hdr-title" id="modal-title">Trades</div>
+        <div class="modal-hdr-sub"  id="modal-sub"></div>
+      </div>
+      <button class="close-btn" onclick="closeModal()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="day-summary" id="day-summary"></div>
+      <div id="trade-list"></div>
+      <button class="add-trade-row" id="add-row-btn" onclick="showForm(null)">
+        <span style="font-size:16px">+</span> Add New Trade
+      </button>
+      <!-- Trade Form -->
+      <div class="form-box" id="trade-form" style="display:none">
+        <div class="form-box-title" id="form-title">New Trade</div>
+
+        <!-- Symbol + Type -->
+        <div class="form-row">
+          <div class="fg">
+            <label>Symbol</label>
+            <input type="text" id="f-sym" placeholder="AAPL" oninput="this.value=this.value.toUpperCase()">
+          </div>
+          <div class="fg">
+            <label>Type</label>
+            <select id="f-type" onchange="onTypeChange()">
+              <option value="stock">Stock</option>
+              <option value="option">Option</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Option-only fields -->
+        <div class="opt-section" id="opt-fields">
+          <hr class="section-divider">
+          <div class="form-row cols3">
+            <div class="fg">
+              <label>Option Type</label>
+              <select id="f-opttype">
+                <option value="call">Call</option>
+                <option value="put">Put</option>
+              </select>
+            </div>
+            <div class="fg">
+              <label>Strike Price ($)</label>
+              <input type="number" id="f-strike" placeholder="200.00" step="0.50">
+            </div>
+            <div class="fg">
+              <label>Expiry Date</label>
+              <input type="date" id="f-expiry">
+            </div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <!-- Legs Grid -->
+        <div class="legs-section">
+          <div class="legs-grid-header">
+            <span>Action</span>
+            <span>Date &amp; Time</span>
+            <span>Price ($)</span>
+            <span>Qty</span>
+            <span>Comm ($)</span>
+            <span>Fees ($)</span>
+            <span></span>
+          </div>
+          <div id="f-legs-body"></div>
+          <div class="legs-footer">
+            <button type="button" class="leg-add-btn buy" onclick="addLeg('buy')">+ Buy</button>
+            <button type="button" class="leg-add-btn sell" onclick="addLeg('sell')">+ Sell</button>
+            <div class="legs-pnl">
+              Net P&amp;L: <span id="pnl-prev" style="color:var(--text-muted)">—</span>
+            </div>
+            <div class="legs-open" id="open-pos-wrap" style="display:none">
+              Open: <span id="open-pos"></span>
+            </div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
+        <div class="form-row cols1">
+          <div class="fg">
+            <label>Notes</label>
+            <textarea id="f-notes" placeholder="Setup, reason for trade, lessons learned..."></textarea>
+          </div>
+        </div>
+        <div class="form-row cols1">
+          <div class="fg">
+            <label>Trading Rules</label>
+            <div class="rules-box" id="f-rules-list"></div>
+            <div class="rules-add-row">
+              <input type="text" id="f-new-rule" placeholder="Type a new rule and press Enter or click Add..." onkeydown="if(event.key==='Enter'){event.preventDefault();addRuleOnTheFly();}">
+              <button type="button" class="btn btn-ghost rules-add-btn" onclick="addRuleOnTheFly()">Add</button>
+            </div>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-ghost" onclick="cancelForm()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveTrade()">Save Trade</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── IMPORT ERROR DIALOG ─── -->
+<div class="overlay" id="import-error-overlay">
+  <div class="modal" id="import-error-modal" style="max-width:600px">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-hdr-title" id="import-error-title">Import Errors</div>
+        <div class="modal-hdr-sub" id="import-error-sub"></div>
+      </div>
+      <button class="close-btn" onclick="closeImportErrors()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div id="import-error-list" class="import-error-list"></div>
+      <div class="form-actions" style="margin-top:16px">
+        <button class="btn btn-ghost" onclick="closeImportErrors()">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="js/storage.js"></script>
+<script src="js/helpers.js"></script>
+<script src="js/calc.js"></script>
+<script src="js/stats.js"></script>
+<script src="js/calendar.js"></script>
+<script src="js/trades.js"></script>
+<script src="js/modal.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
