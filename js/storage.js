@@ -23,3 +23,14 @@ function loadRules() {
 function saveRules(rules) {
   localStorage.setItem(RULES_KEY, JSON.stringify(rules));
 }
+
+const TAGS_KEY = 'tj-tags-v1';
+
+function loadTags() {
+  try { return JSON.parse(localStorage.getItem(TAGS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveTags(tags) {
+  localStorage.setItem(TAGS_KEY, JSON.stringify(tags));
+}

@@ -230,6 +230,16 @@
         </div>
         <div class="form-row cols1">
           <div class="fg">
+            <label>Custom Tags</label>
+            <div class="tags-box" id="f-tags-list"></div>
+            <div class="tags-add-row">
+              <input type="text" id="f-new-tag" placeholder="Type a new tag and press Enter or click Add..." onkeydown="if(event.key==='Enter'){event.preventDefault();addTagOnTheFly();}">
+              <button type="button" class="btn btn-ghost tags-add-btn" onclick="addTagOnTheFly()">Add</button>
+            </div>
+          </div>
+        </div>
+        <div class="form-row cols1">
+          <div class="fg">
             <label>Trading Rules</label>
             <div class="rules-box" id="f-rules-list"></div>
             <div class="rules-add-row">

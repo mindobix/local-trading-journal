@@ -119,6 +119,13 @@ function tradeItemHtml(t) {
     </div>`;
   }
 
+  const tagsLine = (() => {
+    if (!t.tags || !t.tags.length) return '';
+    const allTags = loadTags();
+    const names = t.tags.map(id => { const tg = allTags.find(x => x.id === id); return tg ? escHtml(tg.text) : null; }).filter(Boolean);
+    return names.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${names.map(n => `<span class="trade-tag-badge">${n}</span>`).join('')}</div>` : '';
+  })();
+
   const rulesLine = (() => {
     if (!t.rules || !t.rules.length) return '';
     const allRules = loadRules();
@@ -134,6 +141,7 @@ function tradeItemHtml(t) {
       </div>
       ${legsHtml}
       ${t.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-style:italic">${escHtml(t.notes)}</div>` : ''}
+      ${tagsLine}
       ${rulesLine}
     </div>
     <div class="ti-pnl-wrap">
@@ -296,6 +304,7 @@ function showForm(id) {
     document.getElementById('f-strike').value  = t.strikePrice || '';
     document.getElementById('f-expiry').value  = t.expiryDate  || '';
     document.getElementById('f-notes').value   = t.notes       || '';
+    renderTagsInForm(t.tags   || []);
     renderRulesInForm(t.rules || []);
 
     if (t.legs && t.legs.length) {
@@ -353,6 +362,7 @@ function clearForm() {
   document.getElementById('open-pos-wrap').style.display = 'none';
   currentLegs = [];
   renderLegsGrid();
+  renderTagsInForm([]);
   renderRulesInForm([]);
 }
 
@@ -460,6 +470,7 @@ function saveTrade() {
     type,
     legs,
     notes: document.getElementById('f-notes').value.trim(),
+    tags:  getCheckedTagIds(),
     rules: getCheckedRuleIds(),
   };
 
@@ -578,4 +589,86 @@ function deleteRule(id, e) {
   if (!confirm('Remove this rule from all future trades?')) return;
   saveRules(loadRules().filter(r => r.id !== id));
   renderRulesInForm(getCheckedRuleIds());
+}
+
+// ─── CUSTOM TAGS ───
+
+function renderTagsInForm(checkedIds = []) {
+  const tags = loadTags();
+  const list = document.getElementById('f-tags-list');
+  if (!tags.length) {
+    list.innerHTML = '<div class="tags-empty">No tags yet — add one below.</div>';
+    return;
+  }
+  list.innerHTML = tags.map(tg => `
+    <div class="tag-item" id="tag-row-${tg.id}">
+      <input type="checkbox" class="tag-check" value="${tg.id}" ${checkedIds.includes(tg.id) ? 'checked' : ''}>
+      <span class="tag-text">${escHtml(tg.text)}</span>
+      <button class="tag-icon-btn" type="button" onclick="startEditTag('${tg.id}',event)" title="Edit tag">&#9998;</button>
+      <button class="tag-del-btn"  type="button" onclick="deleteTag('${tg.id}',event)"   title="Remove tag">&#10005;</button>
+    </div>`
+  ).join('');
+}
+
+function startEditTag(id, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const row = document.getElementById(`tag-row-${id}`);
+  const tag = loadTags().find(tg => tg.id === id);
+  if (!row || !tag) return;
+  const checked = row.querySelector('.tag-check').checked;
+  row.innerHTML = `
+    <input type="checkbox" class="tag-check" value="${id}" ${checked ? 'checked' : ''}>
+    <input type="text" class="tag-edit-input" value="${escHtml(tag.text)}"
+      onkeydown="onTagEditKey('${id}',event)" onclick="event.stopPropagation()">
+    <button class="tag-icon-btn tag-save-btn" type="button" onclick="saveTagEdit('${id}',event)" title="Save">&#10003;</button>
+    <button class="tag-del-btn" type="button" onclick="cancelTagEdit(event)" title="Cancel">&#10005;</button>`;
+  row.querySelector('.tag-edit-input').focus();
+}
+
+function onTagEditKey(id, e) {
+  if (e.key === 'Enter')  { e.preventDefault(); saveTagEdit(id, e); }
+  if (e.key === 'Escape') { e.preventDefault(); cancelTagEdit(e); }
+}
+
+function saveTagEdit(id, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const row  = document.getElementById(`tag-row-${id}`);
+  const text = row.querySelector('.tag-edit-input').value.trim();
+  if (!text) return;
+  const tags = loadTags();
+  const idx  = tags.findIndex(tg => tg.id === id);
+  if (idx !== -1) tags[idx].text = text;
+  saveTags(tags);
+  renderTagsInForm(getCheckedTagIds());
+}
+
+function cancelTagEdit(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  renderTagsInForm(getCheckedTagIds());
+}
+
+function getCheckedTagIds() {
+  return Array.from(document.querySelectorAll('.tag-check:checked')).map(el => el.value);
+}
+
+function addTagOnTheFly() {
+  const input = document.getElementById('f-new-tag');
+  const text  = input.value.trim();
+  if (!text) return;
+  const tags = loadTags();
+  tags.push({ id: uid(), text });
+  saveTags(tags);
+  input.value = '';
+  renderTagsInForm(getCheckedTagIds());
+}
+
+function deleteTag(id, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!confirm('Remove this tag?')) return;
+  saveTags(loadTags().filter(tg => tg.id !== id));
+  renderTagsInForm(getCheckedTagIds());
 }

@@ -867,6 +867,108 @@ tbody tr:hover td { background: var(--surface2); }
 .rules-add-row input:focus { border-color: var(--accent); }
 .rules-add-btn { padding: 8px 16px; white-space: nowrap; }
 
+/* ─── CUSTOM TAGS ─── */
+.tags-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.tag-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  font-size: 13px;
+  user-select: none;
+}
+.tag-item:hover { border-color: var(--amber); }
+.tag-item input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--amber);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.tag-item span { flex: 1; color: var(--text); }
+.tag-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.tag-icon-btn:hover { color: var(--amber); }
+.tag-icon-btn.tag-save-btn:hover { color: var(--green); }
+.tag-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.tag-del-btn:hover { color: var(--red); }
+.tag-edit-input {
+  flex: 1;
+  background: var(--surface3);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.tags-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.tags-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.tags-add-row input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.tags-add-row input:focus { border-color: var(--amber); }
+.tags-add-btn { padding: 8px 16px; white-space: nowrap; }
+.trade-tag-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--amber-bg);
+  border: 1px solid rgba(245,158,11,0.35);
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 600;
+}
+
 /* option fields toggle */
 .opt-section { display: none; }
 .opt-section.show { display: contents; }
