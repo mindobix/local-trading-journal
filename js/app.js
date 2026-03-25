@@ -4,10 +4,13 @@ function switchView(v) {
   state.view = v;
   document.getElementById('view-cal').style.display    = v === 'calendar' ? 'block' : 'none';
   document.getElementById('view-trades').style.display = v === 'trades'   ? 'block' : 'none';
+  document.getElementById('view-plan').style.display   = v === 'plan'     ? 'block' : 'none';
   document.getElementById('nav-cal').classList.toggle('active',    v === 'calendar');
   document.getElementById('nav-trades').classList.toggle('active', v === 'trades');
+  document.getElementById('nav-plan').classList.toggle('active',   v === 'plan');
   if (v === 'trades')   renderTrades();
   if (v === 'calendar') renderCalendar();
+  if (v === 'plan')     initPlanView();
 }
 
 function openAddGlobal() {

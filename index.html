@@ -14,6 +14,7 @@
   <nav class="nav">
     <button class="nav-btn active" id="nav-cal" onclick="switchView('calendar')">Calendar</button>
     <button class="nav-btn" id="nav-trades" onclick="switchView('trades')">Trades</button>
+    <button class="nav-btn" id="nav-plan" onclick="switchView('plan')">Daily Plan</button>
   </nav>
   <div class="header-spacer"></div>
   <button class="header-util-btn csv-dl-btn" onclick="downloadCSVTemplate()" title="Download a CSV template with example trades">&#8681; CSV Template</button>
@@ -46,6 +47,43 @@
       </div>
       <div class="cal-divider"></div>
       <div class="weekly-panel" id="weekly-summary"></div>
+    </div>
+  </div>
+
+  <!-- Daily Plan View -->
+  <div id="view-plan" style="display:none">
+    <div class="plan-layout">
+
+      <!-- Mini Calendar -->
+      <div class="plan-cal-panel">
+        <div class="plan-cal-nav">
+          <button class="arrow-btn" onclick="shiftPlanMonth(-1)">&#8592;</button>
+          <div class="plan-cal-month-label" id="plan-month-label"></div>
+          <button class="arrow-btn" onclick="shiftPlanMonth(1)">&#8594;</button>
+        </div>
+        <div class="plan-cal-grid" id="plan-cal-grid"></div>
+      </div>
+
+      <!-- Editor Panel -->
+      <div class="plan-content">
+        <div class="plan-action-bar">
+          <div class="plan-selected-label" id="plan-selected-label"></div>
+          <button class="plan-delete-btn" id="plan-delete-btn" onclick="deletePlan()" title="Delete this day's plan">&#128465; Delete Plan</button>
+        </div>
+        <div id="plan-placeholder" class="plan-placeholder">
+          <div class="plan-placeholder-icon">&#128196;</div>
+          <div class="plan-placeholder-text">Select a date to view or create a daily plan</div>
+        </div>
+        <div id="plan-editor-wrap" class="plan-editor-wrap" style="display:none">
+          <div class="plan-editor-toolbar">
+            <button class="plan-fmt-btn" id="plan-btn-bold"      onclick="planCmd('bold')"      title="Bold"><b>B</b></button>
+            <button class="plan-fmt-btn" id="plan-btn-italic"    onclick="planCmd('italic')"    title="Italic"><i>I</i></button>
+            <button class="plan-fmt-btn" id="plan-btn-underline" onclick="planCmd('underline')" title="Underline"><u>U</u></button>
+          </div>
+          <div id="plan-editor" class="plan-editor" contenteditable="true" oninput="autoSavePlan()"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -229,6 +267,7 @@
 </div>
 
 <script src="js/storage.js"></script>
+<script src="js/plan.js"></script>
 <script src="js/helpers.js"></script>
 <script src="js/calc.js"></script>
 <script src="js/stats.js"></script>
