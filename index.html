@@ -37,7 +37,7 @@
     <option value="stock">Stock</option>
     <option value="option">Option</option>
   </select>
-  <select id="gf-side" onchange="onGlobalFilterChange()">
+  <select id="gf-side" onchange="onGlobalFilterChange()" style="display:none">
     <option value="">All Sides</option>
     <option value="long">Long</option>
     <option value="short">Short</option>
@@ -55,8 +55,28 @@
     <span style="color:var(--text-muted);font-size:12px">to</span>
     <input type="date" id="gf-to" onchange="onGlobalFilterChange()" style="min-width:0;width:136px">
   </div>
+  <div class="gf-multiselect" id="gf-tags-wrap">
+    <button type="button" class="gf-multi-btn" id="gf-tags-btn" onclick="toggleGfMultiDrop('tags')">
+      <span id="gf-tags-label">All Tags</span>
+      <span class="gf-multi-caret">&#9660;</span>
+    </button>
+    <div class="gf-multi-drop" id="gf-tags-drop"></div>
+  </div>
+  <div class="gf-multiselect" id="gf-rules-wrap">
+    <button type="button" class="gf-multi-btn" id="gf-rules-btn" onclick="toggleGfMultiDrop('rules')">
+      <span id="gf-rules-label">All Rules</span>
+      <span class="gf-multi-caret">&#9660;</span>
+    </button>
+    <div class="gf-multi-drop" id="gf-rules-drop"></div>
+  </div>
   <button class="open-pos-filter-btn" id="gf-open-pos-btn" onclick="toggleOpenPositions()">Open Positions</button>
   <button class="gf-reset-btn" onclick="resetGlobalFilters()" title="Clear all filters">&#10005; Reset</button>
+</div>
+
+<!-- ─── ACTIVE FILTERS BAR ─── -->
+<div class="gf-active-bar" id="gf-active-bar" style="display:none">
+  <span class="gf-active-label">Filters:</span>
+  <div class="gf-active-chips" id="gf-active-chips"></div>
 </div>
 
 <!-- ─── MAIN VIEWS ─── -->

@@ -8,6 +8,7 @@ function switchView(v) {
   document.getElementById('nav-cal').classList.toggle('active',    v === 'calendar');
   document.getElementById('nav-trades').classList.toggle('active', v === 'trades');
   document.getElementById('nav-plan').classList.toggle('active',   v === 'plan');
+  updateFilterBarContext(v);
   if (v === 'trades')   renderTrades();
   if (v === 'calendar') renderCalendar();
   if (v === 'plan')     initPlanView();
@@ -327,6 +328,13 @@ function restoreData(event) {
   reader.readAsText(file);
 }
 
+// close multi-select dropdowns when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('.gf-multiselect')) {
+    document.querySelectorAll('.gf-multi-drop.open').forEach(d => d.classList.remove('open'));
+  }
+});
+
 // close modal on overlay click
 document.getElementById('day-overlay').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
@@ -344,5 +352,6 @@ document.addEventListener('keydown', e => {
 });
 
 // init
+updateFilterBarContext('calendar');
 renderStats();
 renderCalendar();
