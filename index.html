@@ -29,6 +29,36 @@
 <!-- ─── STATS BAR ─── -->
 <div class="stats-bar" id="stats-bar"></div>
 
+<!-- ─── GLOBAL FILTER BAR ─── -->
+<div class="global-filter-bar" id="global-filter-bar">
+  <input type="text" id="gf-srch" placeholder="Search symbol..." oninput="onGlobalFilterChange()">
+  <select id="gf-type" onchange="onGlobalFilterChange()">
+    <option value="">All Types</option>
+    <option value="stock">Stock</option>
+    <option value="option">Option</option>
+  </select>
+  <select id="gf-side" onchange="onGlobalFilterChange()">
+    <option value="">All Sides</option>
+    <option value="long">Long</option>
+    <option value="short">Short</option>
+  </select>
+  <select id="gf-date" onchange="onGlobalDateFilterChange()">
+    <option value="">All Dates</option>
+    <option value="daily">Today</option>
+    <option value="weekly">This Week</option>
+    <option value="monthly">This Month</option>
+    <option value="ytd">Year to Date</option>
+    <option value="custom">Custom Range</option>
+  </select>
+  <div id="gf-custom-range" style="display:none;gap:6px;align-items:center">
+    <input type="date" id="gf-from" onchange="onGlobalFilterChange()" style="min-width:0;width:136px">
+    <span style="color:var(--text-muted);font-size:12px">to</span>
+    <input type="date" id="gf-to" onchange="onGlobalFilterChange()" style="min-width:0;width:136px">
+  </div>
+  <button class="open-pos-filter-btn" id="gf-open-pos-btn" onclick="toggleOpenPositions()">Open Positions</button>
+  <button class="gf-reset-btn" onclick="resetGlobalFilters()" title="Clear all filters">&#10005; Reset</button>
+</div>
+
 <!-- ─── MAIN VIEWS ─── -->
 <div class="main">
 
@@ -89,33 +119,6 @@
 
   <!-- Trades View -->
   <div id="view-trades" style="display:none">
-    <div class="toolbar">
-      <input type="text" id="srch" placeholder="Search symbol..." oninput="renderTrades()">
-      <select id="filter-type" onchange="renderTrades()">
-        <option value="">All Types</option>
-        <option value="stock">Stock</option>
-        <option value="option">Option</option>
-      </select>
-      <select id="filter-side" onchange="renderTrades()">
-        <option value="">All Sides</option>
-        <option value="long">Long</option>
-        <option value="short">Short</option>
-      </select>
-      <select id="filter-date" onchange="onDateFilterChange()">
-        <option value="">All Dates</option>
-        <option value="daily">Today</option>
-        <option value="weekly">This Week</option>
-        <option value="monthly">This Month</option>
-        <option value="ytd">Year to Date</option>
-        <option value="custom">Custom Range</option>
-      </select>
-      <div id="custom-range" style="display:none;gap:6px;align-items:center">
-        <input type="date" id="filter-from" onchange="renderTrades()" style="min-width:0;width:136px">
-        <span style="color:var(--text-muted);font-size:12px">to</span>
-        <input type="date" id="filter-to" onchange="renderTrades()" style="min-width:0;width:136px">
-      </div>
-      <button class="open-pos-filter-btn" id="open-pos-filter-btn" onclick="toggleOpenPositions()">Open Positions</button>
-    </div>
     <div class="table-wrap">
       <table>
         <thead>
@@ -280,6 +283,7 @@
 <script src="js/plan.js"></script>
 <script src="js/helpers.js"></script>
 <script src="js/calc.js"></script>
+<script src="js/filters.js"></script>
 <script src="js/stats.js"></script>
 <script src="js/calendar.js"></script>
 <script src="js/trades.js"></script>

@@ -1,5 +1,5 @@
 function renderStats() {
-  const s = computeStats(load());
+  const s = computeStats(applyGlobalFilter(load()));
   const f = (n) => {
     if (n === null) return '—';
     const abs = Math.round(Math.abs(n)).toLocaleString('en-US');

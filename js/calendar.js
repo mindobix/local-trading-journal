@@ -4,7 +4,7 @@ const DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 let curMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
 function renderCalendar() {
-  const trades = load();
+  const trades = applyGlobalFilter(load());
   const yr     = curMonth.getFullYear();
   const mo     = curMonth.getMonth();
   const today  = new Date();
@@ -89,7 +89,7 @@ function renderCalendar() {
 }
 
 function renderWeeklySummary() {
-  const trades  = load();
+  const trades  = applyGlobalFilter(load());
   const yr      = curMonth.getFullYear();
   const mo      = curMonth.getMonth();
   const firstDow    = new Date(yr, mo, 1).getDay();

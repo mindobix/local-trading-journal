@@ -1,43 +1,9 @@
 let sortField = 'date', sortDir = 'desc';
-let openPosFilterActive = false;
-
-function toggleOpenPositions() {
-  openPosFilterActive = !openPosFilterActive;
-  const btn = document.getElementById('open-pos-filter-btn');
-  btn.classList.toggle('active', openPosFilterActive);
-  renderTrades();
-}
 
 function sortBy(field) {
   sortDir = sortField === field ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc';
   sortField = field;
   renderTrades();
-}
-
-function onDateFilterChange() {
-  const val = document.getElementById('filter-date').value;
-  document.getElementById('custom-range').style.display = val === 'custom' ? 'flex' : 'none';
-  renderTrades();
-}
-
-function getDateRange(preset) {
-  const now   = new Date();
-  const pad   = n => String(n).padStart(2, '0');
-  const iso   = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
-  const today = iso(now);
-  if (preset === 'daily') return { from: today, to: today };
-  if (preset === 'weekly') {
-    const sun = new Date(now); sun.setDate(now.getDate() - now.getDay());
-    const sat = new Date(sun); sat.setDate(sun.getDate() + 6);
-    return { from: iso(sun), to: iso(sat) };
-  }
-  if (preset === 'monthly') {
-    const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    const last  = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-    return { from: iso(first), to: iso(last) };
-  }
-  if (preset === 'ytd') return { from: `${now.getFullYear()}-01-01`, to: today };
-  return null;
 }
 
 function legsSummary(t) {
@@ -55,34 +21,7 @@ function legsSummary(t) {
 }
 
 function renderTrades() {
-  const srch  = (document.getElementById('srch').value || '').toLowerCase();
-  const fType = document.getElementById('filter-type').value;
-  const fSide = document.getElementById('filter-side').value;
-  const fDate = document.getElementById('filter-date').value;
-  const fFrom = document.getElementById('filter-from').value;
-  const fTo   = document.getElementById('filter-to').value;
-
-  let trades = load();
-  if (srch)  trades = trades.filter(t => t.symbol.toLowerCase().includes(srch));
-  if (fType) trades = trades.filter(t => t.type === fType);
-  if (fSide) trades = trades.filter(t => {
-    if (t.legs && t.legs.length) {
-      const firstAction = t.legs[0].action;
-      if (fSide === 'long')  return firstAction === 'buy';
-      if (fSide === 'short') return firstAction === 'sell' && t.legs.some(l => l.action === 'buy');
-    }
-    return t.side === fSide;
-  });
-
-  if (fDate && fDate !== 'custom') {
-    const range = getDateRange(fDate);
-    if (range) trades = trades.filter(t => t.date >= range.from && t.date <= range.to);
-  } else if (fDate === 'custom') {
-    if (fFrom) trades = trades.filter(t => t.date >= fFrom);
-    if (fTo)   trades = trades.filter(t => t.date <= fTo);
-  }
-
-  if (openPosFilterActive) trades = trades.filter(t => getOpenQty(t) > 0);
+  let trades = applyGlobalFilter(load());
 
   trades.sort((a, b) => {
     let va = sortField === 'pnl' ? getPnl(a) : (a[sortField] ?? '');
