@@ -1,4 +1,12 @@
 let sortField = 'date', sortDir = 'desc';
+let openPosFilterActive = false;
+
+function toggleOpenPositions() {
+  openPosFilterActive = !openPosFilterActive;
+  const btn = document.getElementById('open-pos-filter-btn');
+  btn.classList.toggle('active', openPosFilterActive);
+  renderTrades();
+}
 
 function sortBy(field) {
   sortDir = sortField === field ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc';
@@ -73,6 +81,8 @@ function renderTrades() {
     if (fFrom) trades = trades.filter(t => t.date >= fFrom);
     if (fTo)   trades = trades.filter(t => t.date <= fTo);
   }
+
+  if (openPosFilterActive) trades = trades.filter(t => getOpenQty(t) > 0);
 
   trades.sort((a, b) => {
     let va = sortField === 'pnl' ? getPnl(a) : (a[sortField] ?? '');

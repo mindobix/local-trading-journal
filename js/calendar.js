@@ -27,6 +27,15 @@ function renderCalendar() {
     }
   }
 
+  // build date → open-trade count map (buy dates of trades still open)
+  const openMap = {};
+  for (const t of trades) {
+    if (getOpenQty(t) <= 0) continue;
+    const firstBuy = t.legs && t.legs.length ? t.legs.find(l => l.action === 'buy') : null;
+    const openDate = firstBuy && firstBuy.date ? firstBuy.date.split('T')[0] : t.date;
+    openMap[openDate] = (openMap[openDate] || 0) + 1;
+  }
+
   const pnlEl  = document.getElementById('monthly-pnl');
   const pnlAbs = Math.round(Math.abs(monthlyPnl)).toLocaleString('en-US');
   pnlEl.textContent = (monthlyPnl < 0 ? '-$' : '$') + pnlAbs;
@@ -45,20 +54,25 @@ function renderCalendar() {
 
   for (let d = 1; d <= daysInMonth; d++) {
     const ds   = `${yr}-${String(mo + 1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-    const info = map[ds];
-    const isToday = today.getFullYear() === yr && today.getMonth() === mo && today.getDate() === d;
+    const info     = map[ds];
+    const openInfo = openMap[ds];
+    const isToday  = today.getFullYear() === yr && today.getMonth() === mo && today.getDate() === d;
     let cls = 'day-cell';
-    if (isToday) cls += ' is-today';
-    if (info)    cls += info.pnl >= 0 ? ' win-day' : ' loss-day';
+    if (isToday)  cls += ' is-today';
+    if (info)     cls += info.pnl >= 0 ? ' win-day' : ' loss-day';
+    else if (openInfo) cls += ' open-day';
 
-    const numHtml = `<div class="day-num">${d}</div>`;
-    const pnlHtml = info ? `
+    const numHtml  = `<div class="day-num">${d}</div>`;
+    const pnlHtml  = info ? `
       <div class="day-pnl ${info.pnl >= 0 ? 'pos' : 'neg'}">
         ${info.pnl < 0 ? '-$' : '$'}${Math.round(Math.abs(info.pnl)).toLocaleString('en-US')}
       </div>
       <div class="day-count">${info.count} trade${info.count !== 1 ? 's' : ''}</div>` : '';
+    const openHtml = openInfo ? `
+      ${!info ? `<div class="day-open-pnl">$0</div>` : ''}
+      <div class="day-open-count">${openInfo} open trade${openInfo !== 1 ? 's' : ''}</div>` : '';
 
-    html += `<div class="${cls}" onclick="openDay('${ds}')">${numHtml}${pnlHtml}</div>`;
+    html += `<div class="${cls}" onclick="openDay('${ds}')">${numHtml}${pnlHtml}${openHtml}</div>`;
   }
 
   // next-month padding

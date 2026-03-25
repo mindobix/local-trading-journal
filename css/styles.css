@@ -16,6 +16,8 @@
   --green-bg: rgba(16,185,129,0.1);
   --red: #ef4444;
   --red-bg: rgba(239,68,68,0.1);
+  --amber: #f59e0b;
+  --amber-bg: rgba(245,158,11,0.1);
   --radius: 8px;
   --radius-lg: 14px;
   --shadow: 0 4px 24px rgba(0,0,0,0.4);
@@ -270,6 +272,7 @@ body {
 .day-cell.is-today { border-color: var(--accent); }
 .day-cell.win-day { border-left: 3px solid var(--green); }
 .day-cell.loss-day { border-left: 3px solid var(--red); }
+.day-cell.open-day { border-left: 3px solid var(--amber); }
 .day-num {
   font-size: 14px;
   font-weight: 700;
@@ -294,6 +297,19 @@ body {
   font-size: 12px;
   color: var(--text-muted);
   margin-top: 6px;
+}
+.day-open-pnl {
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 8px;
+  line-height: 1;
+  color: var(--amber);
+}
+.day-open-count {
+  font-size: 11px;
+  color: var(--amber);
+  opacity: 0.8;
+  margin-top: 4px;
 }
 
 /* ─── CALENDAR + WEEKLY LAYOUT ─── */
@@ -381,6 +397,21 @@ body {
 }
 .toolbar input:focus, .toolbar select:focus { border-color: var(--accent); }
 .toolbar input { flex: 1; min-width: 180px; max-width: 260px; }
+.open-pos-filter-btn {
+  padding: 8px 14px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(245,158,11,0.4);
+  background: transparent;
+  color: var(--amber);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.open-pos-filter-btn:hover { background: var(--amber-bg); border-color: var(--amber); }
+.open-pos-filter-btn.active { background: var(--amber-bg); border-color: var(--amber); color: var(--amber); }
 .toolbar select { min-width: 130px; }
 .toolbar select option { background: var(--surface2); }
 
