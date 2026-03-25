@@ -88,6 +88,8 @@ function refreshAllViews() {
   renderStats();
   const calVisible    = document.getElementById('view-cal')?.style.display    !== 'none';
   const tradesVisible = document.getElementById('view-trades')?.style.display !== 'none';
+  const planVisible   = document.getElementById('view-plan')?.style.display   !== 'none';
   if (calVisible)    renderCalendar();
   if (tradesVisible) renderTrades();
+  if (planVisible && typeof planCalMonth !== 'undefined' && planCalMonth)   renderPlanCalendar();
 }

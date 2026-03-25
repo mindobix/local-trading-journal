@@ -201,13 +201,14 @@ function showImportErrors(errors) {
   document.getElementById('import-error-overlay').classList.add('open');
 }
 
-function showImportSuccess(tradeCount, legCount) {
+function showImportSuccess(tradeCountOrMsg, legCount) {
+  const msg = legCount !== undefined
+    ? `Imported ${tradeCountOrMsg} trade${tradeCountOrMsg !== 1 ? 's' : ''} with ${legCount} leg${legCount !== 1 ? 's' : ''} successfully.`
+    : tradeCountOrMsg;
   document.getElementById('import-error-title').textContent = 'Import Successful';
   document.getElementById('import-error-sub').textContent   = '';
   document.getElementById('import-error-list').innerHTML =
-    `<div class="import-success-msg">
-      &#10003; Imported ${tradeCount} trade${tradeCount !== 1 ? 's' : ''} with ${legCount} leg${legCount !== 1 ? 's' : ''} successfully.
-    </div>`;
+    `<div class="import-success-msg">&#10003; ${msg}</div>`;
   document.getElementById('import-error-overlay').classList.add('open');
 }
 
@@ -218,14 +219,15 @@ function closeImportErrors() {
 // ─── BACKUP & RESTORE ───
 
 function backupData() {
-  const payload = {
-    version: 1,
+  const backup = {
+    version:    2,
+    exportedAt: new Date().toISOString(),
     trades:  load(),
     tags:    loadTags(),
     rules:   loadRules(),
     plans:   loadPlans(),
   };
-  const json  = JSON.stringify(payload, null, 2);
+  const json  = JSON.stringify(backup, null, 2);
   const blob  = new Blob([json], { type: 'application/json' });
   const url   = URL.createObjectURL(blob);
   const today = todayStr();
@@ -241,59 +243,86 @@ function restoreData(event) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = e => {
+    let raw;
     try {
-      const parsed = JSON.parse(e.target.result);
-
-      // Support legacy format (plain array of trades) and new format (object with version)
-      let trades, tags, rules, plans;
-      if (Array.isArray(parsed)) {
-        trades = parsed; tags = []; rules = []; plans = {};
-      } else if (parsed && Array.isArray(parsed.trades)) {
-        trades = parsed.trades;
-        tags   = Array.isArray(parsed.tags)  ? parsed.tags  : [];
-        rules  = Array.isArray(parsed.rules) ? parsed.rules : [];
-        plans  = (parsed.plans && typeof parsed.plans === 'object') ? parsed.plans : {};
-      } else {
-        throw new Error('Invalid format');
-      }
-
-      const existingTrades = load();
-      if (existingTrades.length > 0) {
-        if (!confirm(`You have ${existingTrades.length} existing trade${existingTrades.length !== 1 ? 's' : ''}. Restoring will merge with your current data. Continue?`)) {
-          event.target.value = '';
-          return;
-        }
-      }
-
-      // Merge trades — existing win on ID conflict
-      const existingIds    = new Set(existingTrades.map(t => t.id));
-      const mergedTrades   = [...existingTrades, ...trades.filter(t => !existingIds.has(t.id))];
-
-      // Merge tags — existing win on ID conflict
-      const existingTagIds = new Set(loadTags().map(x => x.id));
-      const mergedTags     = [...loadTags(), ...tags.filter(x => !existingTagIds.has(x.id))];
-
-      // Merge rules — existing win on ID conflict
-      const existingRuleIds = new Set(loadRules().map(x => x.id));
-      const mergedRules     = [...loadRules(), ...rules.filter(x => !existingRuleIds.has(x.id))];
-
-      // Merge plans — existing win on date conflict
-      const mergedPlans = { ...plans, ...loadPlans() };
-
-      save(mergedTrades);
-      saveTags(mergedTags);
-      saveRules(mergedRules);
-      localStorage.setItem(PLANS_KEY, JSON.stringify(mergedPlans));
-
-      renderStats();
-      renderCalendar();
-      if (state.view === 'trades') renderTrades();
-
-      alert(`Restored ${trades.length} trade${trades.length !== 1 ? 's' : ''}. Total: ${mergedTrades.length}.`);
+      raw = JSON.parse(e.target.result);
     } catch {
-      alert('Failed to restore: invalid backup file.');
+      alert('Failed to restore: file is not valid JSON.');
+      event.target.value = '';
+      return;
     }
+
+    // Support legacy backups (plain array of trades)
+    const isLegacy = Array.isArray(raw);
+    const incoming = isLegacy
+      ? { trades: raw, tags: [], rules: [], plans: {} }
+      : raw;
+
+    if (!Array.isArray(incoming.trades)) {
+      alert('Failed to restore: unrecognised backup format.');
+      event.target.value = '';
+      return;
+    }
+
+    const existingTrades = load();
+    const existingTags   = loadTags();
+    const existingRules  = loadRules();
+    const existingPlans  = loadPlans();
+
+    const hasCurrent = existingTrades.length || existingTags.length ||
+                       existingRules.length  || Object.keys(existingPlans).length;
+
+    if (hasCurrent) {
+      const msg = isLegacy
+        ? 'You have existing data. Restoring a legacy backup will merge trades only. Continue?'
+        : 'You have existing data. Restoring will merge trades, tags, rules, and daily plans. Existing entries take priority on conflicts. Continue?';
+      if (!confirm(msg)) { event.target.value = ''; return; }
+    }
+
+    // Merge trades — existing wins on ID conflict
+    const existingTradeIds = new Set(existingTrades.map(t => t.id));
+    const mergedTrades = [
+      ...existingTrades,
+      ...incoming.trades.filter(t => !existingTradeIds.has(t.id)),
+    ];
+
+    // Merge tags — existing wins on ID conflict
+    const existingTagIds = new Set(existingTags.map(t => t.id));
+    const mergedTags = [
+      ...existingTags,
+      ...(incoming.tags || []).filter(t => !existingTagIds.has(t.id)),
+    ];
+
+    // Merge rules — existing wins on ID conflict
+    const existingRuleIds = new Set(existingRules.map(r => r.id));
+    const mergedRules = [
+      ...existingRules,
+      ...(incoming.rules || []).filter(r => !existingRuleIds.has(r.id)),
+    ];
+
+    // Merge plans — existing wins on date conflict
+    const mergedPlans = { ...(incoming.plans || {}), ...existingPlans };
+
+    save(mergedTrades);
+    saveTags(mergedTags);
+    saveRules(mergedRules);
+    localStorage.setItem(PLANS_KEY, JSON.stringify(mergedPlans));
+
     event.target.value = '';
+
+    refreshAllViews();
+
+    const addedTrades = mergedTrades.length - existingTrades.length;
+    const addedTags   = mergedTags.length   - existingTags.length;
+    const addedRules  = mergedRules.length  - existingRules.length;
+    const addedPlans  = Object.keys(mergedPlans).length - Object.keys(existingPlans).length;
+
+    const parts = [`${addedTrades} trade${addedTrades !== 1 ? 's' : ''}`];
+    if (addedTags  > 0) parts.push(`${addedTags} tag${addedTags !== 1 ? 's' : ''}`);
+    if (addedRules > 0) parts.push(`${addedRules} rule${addedRules !== 1 ? 's' : ''}`);
+    if (addedPlans > 0) parts.push(`${addedPlans} daily plan${addedPlans !== 1 ? 's' : ''}`);
+
+    showImportSuccess(parts.join(', ') + ' restored.');
   };
   reader.readAsText(file);
 }
