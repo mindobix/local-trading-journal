@@ -34,3 +34,14 @@ function loadTags() {
 function saveTags(tags) {
   localStorage.setItem(TAGS_KEY, JSON.stringify(tags));
 }
+
+const MISTAKES_KEY = 'tj-mistakes-v1';
+
+function loadMistakes() {
+  try { return JSON.parse(localStorage.getItem(MISTAKES_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveMistakes(mistakes) {
+  localStorage.setItem(MISTAKES_KEY, JSON.stringify(mistakes));
+}

@@ -119,18 +119,16 @@ function tradeItemHtml(t) {
     </div>`;
   }
 
-  const tagsLine = (() => {
-    if (!t.tags || !t.tags.length) return '';
-    const allTags = loadTags();
-    const names = t.tags.map(id => { const tg = allTags.find(x => x.id === id); return tg ? escHtml(tg.text) : null; }).filter(Boolean);
-    return names.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${names.map(n => `<span class="trade-tag-badge">${n}</span>`).join('')}</div>` : '';
-  })();
-
-  const rulesLine = (() => {
-    if (!t.rules || !t.rules.length) return '';
-    const allRules = loadRules();
-    const names = t.rules.map(id => { const r = allRules.find(x => x.id === id); return r ? escHtml(r.text) : null; }).filter(Boolean);
-    return names.length ? `<div style="color:var(--accent);font-size:11px;margin-top:4px">&#10003; ${names.join(' &bull; ')}</div>` : '';
+  const badgesLine = (() => {
+    const allTags     = loadTags();
+    const allMistakes = loadMistakes();
+    const allRules    = loadRules();
+    const badges = [
+      ...(t.tags     || []).map(id => { const tg = allTags.find(x => x.id === id);     return tg ? `<span class="trade-tag-badge">${escHtml(tg.text)}</span>`         : null; }),
+      ...(t.mistakes || []).map(id => { const m  = allMistakes.find(x => x.id === id); return m  ? `<span class="trade-mistake-badge">${escHtml(m.text)}</span>`       : null; }),
+      ...(t.rules    || []).map(id => { const r  = allRules.find(x => x.id === id);    return r  ? `<span class="trade-rule-badge">${escHtml(r.text)}</span>`           : null; }),
+    ].filter(Boolean);
+    return badges.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${badges.join('')}</div>` : '';
   })();
 
   return `<div class="trade-item">
@@ -141,8 +139,7 @@ function tradeItemHtml(t) {
       </div>
       ${legsHtml}
       ${t.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-style:italic">${escHtml(t.notes)}</div>` : ''}
-      ${tagsLine}
-      ${rulesLine}
+      ${badgesLine}
     </div>
     <div class="ti-pnl-wrap">
       <div class="ti-pnl ${pCls}">${pStr}</div>
@@ -304,8 +301,9 @@ function showForm(id) {
     document.getElementById('f-strike').value  = t.strikePrice || '';
     document.getElementById('f-expiry').value  = t.expiryDate  || '';
     document.getElementById('f-notes').value   = t.notes       || '';
-    renderTagsInForm(t.tags   || []);
-    renderRulesInForm(t.rules || []);
+    renderTagsInForm(t.tags         || []);
+    renderMistakesInForm(t.mistakes || []);
+    renderRulesInForm(t.rules       || []);
 
     if (t.legs && t.legs.length) {
       currentLegs = t.legs.map(l => ({
@@ -363,6 +361,7 @@ function clearForm() {
   currentLegs = [];
   renderLegsGrid();
   renderTagsInForm([]);
+  renderMistakesInForm([]);
   renderRulesInForm([]);
 }
 
@@ -395,7 +394,7 @@ function calcPreview() {
     const sellComm  = parseFloat(leg.commission) || 0;
     const sellFees  = parseFloat(leg.fees)       || 0;
     const sellQty   = parseFloat(leg.quantity)   || 0;
-    if (!sellPrice || !sellQty) continue;
+    if (sellPrice < 0 || !sellQty) continue;
     hasData = true;
     let sellLeft = sellQty, revenue = 0, buyCost = 0, buyComm = 0, buyFees = 0, matched = 0;
     for (const buy of buyQueue) {
@@ -447,9 +446,10 @@ function saveTrade() {
   if (!currentLegs.length)   return alert('Please add at least one leg.');
 
   for (const leg of currentLegs) {
-    if (!leg.date)                            return alert('Each leg needs a date.');
-    if (!parseFloat(leg.price) > 0)           return alert('Each leg needs a price.');
-    if (!(parseFloat(leg.quantity) > 0))      return alert('Each leg needs a quantity greater than 0.');
+    if (!leg.date)                                                      return alert('Each leg needs a date.');
+    if (leg.action !== 'sell' && !(parseFloat(leg.price) > 0))         return alert('Each leg needs a price.');
+    if (leg.action === 'sell' && parseFloat(leg.price) < 0)            return alert('Price cannot be negative.');
+    if (!(parseFloat(leg.quantity) > 0))                               return alert('Each leg needs a quantity greater than 0.');
   }
 
   const legs = currentLegs.map(l => ({
@@ -469,9 +469,10 @@ function saveTrade() {
     symbol: sym,
     type,
     legs,
-    notes: document.getElementById('f-notes').value.trim(),
-    tags:  getCheckedTagIds(),
-    rules: getCheckedRuleIds(),
+    notes:    document.getElementById('f-notes').value.trim(),
+    tags:     getCheckedTagIds(),
+    mistakes: getCheckedMistakeIds(),
+    rules:    getCheckedRuleIds(),
   };
 
   if (type === 'option') {
@@ -671,4 +672,86 @@ function deleteTag(id, e) {
   if (!confirm('Remove this tag?')) return;
   saveTags(loadTags().filter(tg => tg.id !== id));
   renderTagsInForm(getCheckedTagIds());
+}
+
+// ─── MISTAKES ───
+
+function renderMistakesInForm(checkedIds = []) {
+  const mistakes = loadMistakes();
+  const list = document.getElementById('f-mistakes-list');
+  if (!mistakes.length) {
+    list.innerHTML = '<div class="mistakes-empty">No mistakes yet — add one below.</div>';
+    return;
+  }
+  list.innerHTML = mistakes.map(m => `
+    <div class="mistake-item" id="mistake-row-${m.id}">
+      <input type="checkbox" class="mistake-check" value="${m.id}" ${checkedIds.includes(m.id) ? 'checked' : ''}>
+      <span class="mistake-text">${escHtml(m.text)}</span>
+      <button class="mistake-icon-btn" type="button" onclick="startEditMistake('${m.id}',event)" title="Edit mistake">&#9998;</button>
+      <button class="mistake-del-btn"  type="button" onclick="deleteMistake('${m.id}',event)"   title="Remove mistake">&#10005;</button>
+    </div>`
+  ).join('');
+}
+
+function startEditMistake(id, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const row     = document.getElementById(`mistake-row-${id}`);
+  const mistake = loadMistakes().find(m => m.id === id);
+  if (!row || !mistake) return;
+  const checked = row.querySelector('.mistake-check').checked;
+  row.innerHTML = `
+    <input type="checkbox" class="mistake-check" value="${id}" ${checked ? 'checked' : ''}>
+    <input type="text" class="mistake-edit-input" value="${escHtml(mistake.text)}"
+      onkeydown="onMistakeEditKey('${id}',event)" onclick="event.stopPropagation()">
+    <button class="mistake-icon-btn mistake-save-btn" type="button" onclick="saveMistakeEdit('${id}',event)" title="Save">&#10003;</button>
+    <button class="mistake-del-btn" type="button" onclick="cancelMistakeEdit(event)" title="Cancel">&#10005;</button>`;
+  row.querySelector('.mistake-edit-input').focus();
+}
+
+function onMistakeEditKey(id, e) {
+  if (e.key === 'Enter')  { e.preventDefault(); saveMistakeEdit(id, e); }
+  if (e.key === 'Escape') { e.preventDefault(); cancelMistakeEdit(e); }
+}
+
+function saveMistakeEdit(id, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  const row  = document.getElementById(`mistake-row-${id}`);
+  const text = row.querySelector('.mistake-edit-input').value.trim();
+  if (!text) return;
+  const mistakes = loadMistakes();
+  const idx      = mistakes.findIndex(m => m.id === id);
+  if (idx !== -1) mistakes[idx].text = text;
+  saveMistakes(mistakes);
+  renderMistakesInForm(getCheckedMistakeIds());
+}
+
+function cancelMistakeEdit(e) {
+  e.preventDefault();
+  e.stopPropagation();
+  renderMistakesInForm(getCheckedMistakeIds());
+}
+
+function getCheckedMistakeIds() {
+  return Array.from(document.querySelectorAll('.mistake-check:checked')).map(el => el.value);
+}
+
+function addMistakeOnTheFly() {
+  const input = document.getElementById('f-new-mistake');
+  const text  = input.value.trim();
+  if (!text) return;
+  const mistakes = loadMistakes();
+  mistakes.push({ id: uid(), text });
+  saveMistakes(mistakes);
+  input.value = '';
+  renderMistakesInForm(getCheckedMistakeIds());
+}
+
+function deleteMistake(id, e) {
+  e.preventDefault();
+  e.stopPropagation();
+  if (!confirm('Remove this mistake?')) return;
+  saveMistakes(loadMistakes().filter(m => m.id !== id));
+  renderMistakesInForm(getCheckedMistakeIds());
 }

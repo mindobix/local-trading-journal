@@ -1,7 +1,8 @@
 // ─── GLOBAL FILTER STATE ───
 let openPosFilterActive = false;
-let gfSelectedTags  = [];
-let gfSelectedRules = [];
+let gfSelectedTags     = [];
+let gfSelectedRules    = [];
+let gfSelectedMistakes = [];
 
 function getDateRange(preset) {
   const now   = new Date();
@@ -64,6 +65,12 @@ function applyGlobalFilter(trades) {
     );
   }
 
+  if (gfSelectedMistakes.length) {
+    filtered = filtered.filter(t =>
+      Array.isArray(t.mistakes) && gfSelectedMistakes.some(id => t.mistakes.includes(id))
+    );
+  }
+
   if (openPosFilterActive) filtered = filtered.filter(t => getOpenQty(t) > 0);
 
   return filtered;
@@ -96,10 +103,12 @@ function resetGlobalFilters() {
   document.getElementById('gf-from').value  = '';
   document.getElementById('gf-to').value    = '';
   document.getElementById('gf-custom-range').style.display = 'none';
-  gfSelectedTags  = [];
-  gfSelectedRules = [];
+  gfSelectedTags     = [];
+  gfSelectedRules    = [];
+  gfSelectedMistakes = [];
   updateGfMultiLabel('tags');
   updateGfMultiLabel('rules');
+  updateGfMultiLabel('mistakes');
   document.querySelectorAll('.gf-multi-drop.open').forEach(d => d.classList.remove('open'));
   openPosFilterActive = false;
   document.getElementById('gf-open-pos-btn').classList.remove('active');
@@ -110,9 +119,9 @@ function resetGlobalFilters() {
 // ─── MULTI-SELECT DROPDOWN ───
 
 function buildGfMultiDrop(type) {
-  const items = type === 'tags' ? loadTags() : loadRules();
+  const items = type === 'tags' ? loadTags() : type === 'mistakes' ? loadMistakes() : loadRules();
   const drop  = document.getElementById(`gf-${type}-drop`);
-  const sel   = type === 'tags' ? gfSelectedTags : gfSelectedRules;
+  const sel   = type === 'tags' ? gfSelectedTags : type === 'mistakes' ? gfSelectedMistakes : gfSelectedRules;
   if (!drop) return;
   if (!items.length) {
     drop.innerHTML = `<div class="gf-multi-empty">No ${type} defined yet</div>`;
@@ -120,7 +129,7 @@ function buildGfMultiDrop(type) {
   }
   drop.innerHTML = items.map(item =>
     `<label class="gf-multi-item">
-      <input type="checkbox" value="${item.id}" ${sel.includes(item.id) ? 'checked' : ''}
+      <input type="checkbox" class="gf-check-${type}" value="${item.id}" ${sel.includes(item.id) ? 'checked' : ''}
         onchange="onGfMultiChange('${type}','${item.id}',this.checked)">
       <span>${item.text}</span>
     </label>`
@@ -139,6 +148,9 @@ function onGfMultiChange(type, id, checked) {
   if (type === 'tags') {
     if (checked) { if (!gfSelectedTags.includes(id)) gfSelectedTags.push(id); }
     else gfSelectedTags = gfSelectedTags.filter(x => x !== id);
+  } else if (type === 'mistakes') {
+    if (checked) { if (!gfSelectedMistakes.includes(id)) gfSelectedMistakes.push(id); }
+    else gfSelectedMistakes = gfSelectedMistakes.filter(x => x !== id);
   } else {
     if (checked) { if (!gfSelectedRules.includes(id)) gfSelectedRules.push(id); }
     else gfSelectedRules = gfSelectedRules.filter(x => x !== id);
@@ -149,11 +161,11 @@ function onGfMultiChange(type, id, checked) {
 }
 
 function updateGfMultiLabel(type) {
-  const sel   = type === 'tags' ? gfSelectedTags : gfSelectedRules;
+  const sel   = type === 'tags' ? gfSelectedTags : type === 'mistakes' ? gfSelectedMistakes : gfSelectedRules;
   const label = document.getElementById(`gf-${type}-label`);
   const btn   = document.getElementById(`gf-${type}-btn`);
   if (!label) return;
-  const noun = type === 'tags' ? 'Tag' : 'Rule';
+  const noun = type === 'tags' ? 'Tag' : type === 'mistakes' ? 'Mistake' : 'Rule';
   label.textContent = sel.length === 0
     ? `All ${noun}s`
     : `${sel.length} ${noun}${sel.length !== 1 ? 's' : ''}`;
@@ -161,12 +173,14 @@ function updateGfMultiLabel(type) {
 }
 
 function updateFilterBarContext(view) {
-  const sideEl    = document.getElementById('gf-side');
-  const tagsWrap  = document.getElementById('gf-tags-wrap');
-  const rulesWrap = document.getElementById('gf-rules-wrap');
-  if (sideEl)    sideEl.style.display    = view === 'trades' ? '' : 'none';
-  if (tagsWrap)  tagsWrap.style.display  = view === 'plan'   ? 'none' : '';
-  if (rulesWrap) rulesWrap.style.display = view === 'plan'   ? 'none' : '';
+  const sideEl       = document.getElementById('gf-side');
+  const tagsWrap     = document.getElementById('gf-tags-wrap');
+  const rulesWrap    = document.getElementById('gf-rules-wrap');
+  const mistakesWrap = document.getElementById('gf-mistakes-wrap');
+  if (sideEl)       sideEl.style.display       = view === 'trades' ? '' : 'none';
+  if (tagsWrap)     tagsWrap.style.display      = view === 'plan'   ? 'none' : '';
+  if (rulesWrap)    rulesWrap.style.display     = view === 'plan'   ? 'none' : '';
+  if (mistakesWrap) mistakesWrap.style.display  = view === 'plan'   ? 'none' : '';
   renderActiveFilters();
 }
 
@@ -186,8 +200,9 @@ function renderActiveFilters() {
   const fDate = document.getElementById('gf-date')?.value  || '';
   const fFrom = document.getElementById('gf-from')?.value  || '';
   const fTo   = document.getElementById('gf-to')?.value    || '';
-  const allTags  = loadTags();
-  const allRules = loadRules();
+  const allTags     = loadTags();
+  const allRules    = loadRules();
+  const allMistakes = loadMistakes();
 
   const parts = [];
 
@@ -227,7 +242,7 @@ function renderActiveFilters() {
   for (const id of gfSelectedTags) {
     const tag = allTags.find(t => t.id === id);
     if (tag) parts.push(
-      `<span class="gf-chip">Tag: ${tag.text}
+      `<span class="gf-chip gf-chip-tag">Tag: ${tag.text}
         <button class="gf-chip-x" onclick="clearGfChip('tag','${id}')" title="Remove">&#10005;</button>
       </span>`
     );
@@ -236,8 +251,17 @@ function renderActiveFilters() {
   for (const id of gfSelectedRules) {
     const rule = allRules.find(r => r.id === id);
     if (rule) parts.push(
-      `<span class="gf-chip">Rule: ${rule.text}
+      `<span class="gf-chip gf-chip-rule">Rule: ${rule.text}
         <button class="gf-chip-x" onclick="clearGfChip('rule','${id}')" title="Remove">&#10005;</button>
+      </span>`
+    );
+  }
+
+  for (const id of gfSelectedMistakes) {
+    const mistake = allMistakes.find(m => m.id === id);
+    if (mistake) parts.push(
+      `<span class="gf-chip gf-chip-mistake">Mistake: ${mistake.text}
+        <button class="gf-chip-x" onclick="clearGfChip('mistake','${id}')" title="Remove">&#10005;</button>
       </span>`
     );
   }
@@ -277,6 +301,10 @@ function clearGfChip(type, id) {
     case 'rule':
       gfSelectedRules = gfSelectedRules.filter(x => x !== id);
       updateGfMultiLabel('rules');
+      break;
+    case 'mistake':
+      gfSelectedMistakes = gfSelectedMistakes.filter(x => x !== id);
+      updateGfMultiLabel('mistakes');
       break;
     case 'openpos':
       openPosFilterActive = false;

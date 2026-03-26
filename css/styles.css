@@ -295,6 +295,9 @@ body {
 }
 .gf-multi-item:hover { background: var(--surface3); }
 .gf-multi-item input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; flex-shrink: 0; }
+.gf-check-tags     { accent-color: var(--amber) !important; }
+.gf-check-mistakes { accent-color: var(--red)   !important; }
+.gf-check-rules    { accent-color: var(--green) !important; }
 .gf-multi-empty {
   padding: 10px 12px;
   color: var(--text-muted);
@@ -310,7 +313,7 @@ body {
   padding: 7px 28px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  flex-wrap: wrap;
+  overflow: hidden;
 }
 .gf-active-label {
   font-size: 11px;
@@ -321,7 +324,7 @@ body {
   white-space: nowrap;
   flex-shrink: 0;
 }
-.gf-active-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.gf-active-chips { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; overflow-x: auto; }
 .gf-chip {
   display: inline-flex;
   align-items: center;
@@ -347,6 +350,9 @@ body {
   transition: color 0.12s;
 }
 .gf-chip-x:hover { color: var(--red); }
+.gf-chip-tag     { background: var(--amber-bg); border-color: rgba(245,158,11,0.35); }
+.gf-chip-mistake { background: var(--red-bg);   border-color: rgba(239,68,68,0.35); }
+.gf-chip-rule    { background: var(--green-bg); border-color: rgba(16,185,129,0.35); }
 
 /* ─── MAIN ─── */
 .main { padding: 16px 28px 32px; }
@@ -950,10 +956,10 @@ tbody tr:hover td { background: var(--surface2); }
   font-size: 13px;
   user-select: none;
 }
-.rule-item:hover { border-color: var(--accent); }
+.rule-item:hover { border-color: var(--green); }
 .rule-item input[type="checkbox"] {
   width: 15px; height: 15px;
-  accent-color: var(--accent);
+  accent-color: var(--green);
   flex-shrink: 0;
   cursor: pointer;
 }
@@ -970,7 +976,7 @@ tbody tr:hover td { background: var(--surface2); }
   transition: color 0.15s;
   flex-shrink: 0;
 }
-.rule-icon-btn:hover { color: var(--accent); }
+.rule-icon-btn:hover { color: var(--green); }
 .rule-icon-btn.rule-save-btn:hover { color: var(--green); }
 .rule-del-btn {
   background: none;
@@ -988,7 +994,7 @@ tbody tr:hover td { background: var(--surface2); }
 .rule-edit-input {
   flex: 1;
   background: var(--surface3);
-  border: 1px solid var(--accent);
+  border: 1px solid var(--green);
   border-radius: var(--radius);
   color: var(--text);
   padding: 4px 8px;
@@ -1019,8 +1025,18 @@ tbody tr:hover td { background: var(--surface2); }
   outline: none;
   transition: border-color 0.15s;
 }
-.rules-add-row input:focus { border-color: var(--accent); }
+.rules-add-row input:focus { border-color: var(--green); }
 .rules-add-btn { padding: 8px 16px; white-space: nowrap; }
+.trade-rule-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--green-bg);
+  border: 1px solid rgba(16,185,129,0.35);
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
+}
 
 /* ─── CUSTOM TAGS ─── */
 .tags-box {
@@ -1123,6 +1139,108 @@ tbody tr:hover td { background: var(--surface2); }
   font-size: 11px;
   font-weight: 600;
 }
+.trade-mistake-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--red-bg);
+  border: 1px solid rgba(239,68,68,0.35);
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ─── MISTAKES ─── */
+.mistakes-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.mistake-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  font-size: 13px;
+  user-select: none;
+}
+.mistake-item:hover { border-color: var(--red); }
+.mistake-item input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--red);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.mistake-item span { flex: 1; color: var(--text); }
+.mistake-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.mistake-icon-btn:hover { color: var(--red); }
+.mistake-icon-btn.mistake-save-btn:hover { color: var(--green); }
+.mistake-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.mistake-del-btn:hover { color: var(--red); }
+.mistake-edit-input {
+  flex: 1;
+  background: var(--surface3);
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.mistakes-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.mistakes-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mistakes-add-row input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.mistakes-add-row input:focus { border-color: var(--red); }
+.mistakes-add-btn { padding: 8px 16px; white-space: nowrap; }
 
 /* option fields toggle */
 .opt-section { display: none; }

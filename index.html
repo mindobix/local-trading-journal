@@ -69,6 +69,13 @@
     </button>
     <div class="gf-multi-drop" id="gf-rules-drop"></div>
   </div>
+  <div class="gf-multiselect" id="gf-mistakes-wrap">
+    <button type="button" class="gf-multi-btn" id="gf-mistakes-btn" onclick="toggleGfMultiDrop('mistakes')">
+      <span id="gf-mistakes-label">All Mistakes</span>
+      <span class="gf-multi-caret">&#9660;</span>
+    </button>
+    <div class="gf-multi-drop" id="gf-mistakes-drop"></div>
+  </div>
   <button class="open-pos-filter-btn" id="gf-open-pos-btn" onclick="toggleOpenPositions()">Open Positions</button>
   <button class="gf-reset-btn" onclick="resetGlobalFilters()" title="Clear all filters">&#10005; Reset</button>
 </div>
@@ -258,6 +265,16 @@
             <div class="tags-add-row">
               <input type="text" id="f-new-tag" placeholder="Type a new tag and press Enter or click Add..." onkeydown="if(event.key==='Enter'){event.preventDefault();addTagOnTheFly();}">
               <button type="button" class="btn btn-ghost tags-add-btn" onclick="addTagOnTheFly()">Add</button>
+            </div>
+          </div>
+        </div>
+        <div class="form-row cols1">
+          <div class="fg">
+            <label>Mistakes</label>
+            <div class="mistakes-box" id="f-mistakes-list"></div>
+            <div class="mistakes-add-row">
+              <input type="text" id="f-new-mistake" placeholder="Type a mistake and press Enter or click Add..." onkeydown="if(event.key==='Enter'){event.preventDefault();addMistakeOnTheFly();}">
+              <button type="button" class="btn btn-ghost mistakes-add-btn" onclick="addMistakeOnTheFly()">Add</button>
             </div>
           </div>
         </div>

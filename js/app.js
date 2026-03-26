@@ -223,10 +223,11 @@ function backupData() {
   const backup = {
     version:    2,
     exportedAt: new Date().toISOString(),
-    trades:  load(),
-    tags:    loadTags(),
-    rules:   loadRules(),
-    plans:   loadPlans(),
+    trades:   load(),
+    tags:     loadTags(),
+    mistakes: loadMistakes(),
+    rules:    loadRules(),
+    plans:    loadPlans(),
   };
   const json  = JSON.stringify(backup, null, 2);
   const blob  = new Blob([json], { type: 'application/json' });
@@ -256,7 +257,7 @@ function restoreData(event) {
     // Support legacy backups (plain array of trades)
     const isLegacy = Array.isArray(raw);
     const incoming = isLegacy
-      ? { trades: raw, tags: [], rules: [], plans: {} }
+      ? { trades: raw, tags: [], mistakes: [], rules: [], plans: {} }
       : raw;
 
     if (!Array.isArray(incoming.trades)) {
@@ -265,18 +266,20 @@ function restoreData(event) {
       return;
     }
 
-    const existingTrades = load();
-    const existingTags   = loadTags();
-    const existingRules  = loadRules();
-    const existingPlans  = loadPlans();
+    const existingTrades   = load();
+    const existingTags     = loadTags();
+    const existingMistakes = loadMistakes();
+    const existingRules    = loadRules();
+    const existingPlans    = loadPlans();
 
     const hasCurrent = existingTrades.length || existingTags.length ||
-                       existingRules.length  || Object.keys(existingPlans).length;
+                       existingMistakes.length || existingRules.length ||
+                       Object.keys(existingPlans).length;
 
     if (hasCurrent) {
       const msg = isLegacy
         ? 'You have existing data. Restoring a legacy backup will merge trades only. Continue?'
-        : 'You have existing data. Restoring will merge trades, tags, rules, and daily plans. Backup entries take priority on conflicts. Continue?';
+        : 'You have existing data. Restoring will merge trades, tags, mistakes, rules, and daily plans. Backup entries take priority on conflicts. Continue?';
       if (!confirm(msg)) { event.target.value = ''; return; }
     }
 
@@ -295,6 +298,13 @@ function restoreData(event) {
     const mergedTags = [
       ...existingTags,
       ...(incoming.tags || []).filter(t => !existingTagIds.has(t.id)),
+    ];
+
+    // Merge mistakes — existing wins on ID conflict
+    const existingMistakeIds = new Set(existingMistakes.map(m => m.id));
+    const mergedMistakes = [
+      ...existingMistakes,
+      ...(incoming.mistakes || []).filter(m => !existingMistakeIds.has(m.id)),
     ];
 
     // Merge rules — existing wins on ID conflict
@@ -316,6 +326,7 @@ function restoreData(event) {
 
     save(mergedTrades);
     saveTags(mergedTags);
+    saveMistakes(mergedMistakes);
     saveRules(mergedRules);
     localStorage.setItem(PLANS_KEY, JSON.stringify(mergedPlans));
 
@@ -323,13 +334,15 @@ function restoreData(event) {
 
     refreshAllViews();
 
-    const addedTags  = mergedTags.length  - existingTags.length;
-    const addedRules = mergedRules.length - existingRules.length;
+    const addedTags     = mergedTags.length     - existingTags.length;
+    const addedMistakes = mergedMistakes.length - existingMistakes.length;
+    const addedRules    = mergedRules.length    - existingRules.length;
 
     const parts = [];
     if (addedTrades   > 0) parts.push(`${addedTrades} trade${addedTrades !== 1 ? 's' : ''} added`);
     if (updatedTrades > 0) parts.push(`${updatedTrades} trade${updatedTrades !== 1 ? 's' : ''} updated`);
     if (addedTags     > 0) parts.push(`${addedTags} tag${addedTags !== 1 ? 's' : ''} added`);
+    if (addedMistakes > 0) parts.push(`${addedMistakes} mistake${addedMistakes !== 1 ? 's' : ''} added`);
     if (addedRules    > 0) parts.push(`${addedRules} rule${addedRules !== 1 ? 's' : ''} added`);
     if (addedPlans    > 0) parts.push(`${addedPlans} daily plan${addedPlans !== 1 ? 's' : ''} added`);
     if (updatedPlans  > 0) parts.push(`${updatedPlans} daily plan${updatedPlans !== 1 ? 's' : ''} updated`);
