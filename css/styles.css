@@ -480,7 +480,8 @@ body {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 5px;
+  padding-top: 42px;
 }
 
 /* ─── WEEK BOX ─── */
@@ -489,6 +490,7 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 12px 14px;
+  min-height: 116px;
   cursor: pointer;
   transition: border-color 0.15s, background 0.15s;
   border-left: 3px solid var(--border);
