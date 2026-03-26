@@ -7,7 +7,14 @@
       "Bash(npx serve:*)",
       "Bash(start c:/Users/gsubu/LocalWebApps/local-trading-journal/index.html)",
       "Bash(python3 -c \":*)",
-      "Bash(node -e \":*)"
+      "Bash(node -e \":*)",
+      "Bash(cat ~/Downloads/trading-journal-backup-2026-03-26 \\\\\\(2\\\\\\).json)",
+      "Bash(node -e \"const d=require\\(process.env.USERPROFILE+''/Downloads/trading-journal-backup-2026-03-26 \\(2\\).json''\\); console.log\\(''Keys:'', Object.keys\\(d\\)\\); console.log\\(''Trades:'', d.trades?.length\\); console.log\\(''TradePlans:'', d.tradePlans?.length\\); if\\(d.trades?.length\\) console.log\\(''Sample trade keys:'', Object.keys\\(d.trades[0]\\)\\)\")",
+      "Bash(node -e \"const d=require\\(process.env.USERPROFILE+''/Downloads/trading-journal-backup-2026-03-26 \\(2\\).json''\\); console.log\\(''Plans:'', d.plans?.length\\); if\\(d.plans?.length\\) console.log\\(''Sample plan keys:'', Object.keys\\(d.plans[0]\\)\\); console.log\\(''Tags:'', d.tags?.length\\); console.log\\(''Rules:'', d.rules?.length\\)\")",
+      "Bash(node -e \"const d=require\\(process.env.USERPROFILE+''/Downloads/trading-journal-backup-2026-03-26 \\(2\\).json''\\); console.log\\(''plans type:'', typeof d.plans\\); console.log\\(''plans:'', JSON.stringify\\(d.plans\\).substring\\(0,200\\)\\)\")",
+      "Bash(node -e \"const d=require\\(process.env.USERPROFILE+''/Downloads/trading-journal-backup-2026-03-26 \\(2\\).json''\\); console.log\\(''All keys:'', Object.keys\\(d\\)\\); console.log\\(''plans count:'', Object.keys\\(d.plans\\).length\\); console.log\\(''plan dates:'', Object.keys\\(d.plans\\).slice\\(0,5\\)\\)\")",
+      "Bash(node -e \"const d=require\\(process.env.USERPROFILE+''/Downloads/trading-journal-backup-2026-03-26 \\(2\\).json''\\); const t=d.trades; const updated = t.filter\\(t => Object.keys\\(t\\).length > 10\\); console.log\\(''Trades with extra fields:'', updated.length\\); console.log\\(''All unique trade keys:'', [...new Set\\(t.flatMap\\(t=>Object.keys\\(t\\)\\)\\)]\\)\")",
+      "Bash(node -e \"const d=require\\(process.env.USERPROFILE+''/Downloads/trading-journal-backup-2026-03-26 \\(2\\).json''\\); console.log\\(''trades sample with tags:''\\); d.trades.filter\\(t=>t.tags\\).slice\\(0,3\\).forEach\\(t=>console.log\\(t.id, t.tags, t.notes?.substring\\(0,50\\)\\)\\)\")"
     ]
   }
 }

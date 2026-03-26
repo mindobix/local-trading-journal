@@ -276,16 +276,19 @@ function restoreData(event) {
     if (hasCurrent) {
       const msg = isLegacy
         ? 'You have existing data. Restoring a legacy backup will merge trades only. Continue?'
-        : 'You have existing data. Restoring will merge trades, tags, rules, and daily plans. Existing entries take priority on conflicts. Continue?';
+        : 'You have existing data. Restoring will merge trades, tags, rules, and daily plans. Backup entries take priority on conflicts. Continue?';
       if (!confirm(msg)) { event.target.value = ''; return; }
     }
 
-    // Merge trades — existing wins on ID conflict
-    const existingTradeIds = new Set(existingTrades.map(t => t.id));
-    const mergedTrades = [
-      ...existingTrades,
-      ...incoming.trades.filter(t => !existingTradeIds.has(t.id)),
-    ];
+    // Merge trades — incoming wins on ID conflict (backup updates override local)
+    const existingTradeMap = new Map(existingTrades.map(t => [t.id, t]));
+    let updatedTrades = 0;
+    for (const t of incoming.trades) {
+      if (existingTradeMap.has(t.id)) updatedTrades++;
+      existingTradeMap.set(t.id, t);
+    }
+    const addedTrades = incoming.trades.length - updatedTrades;
+    const mergedTrades = [...existingTradeMap.values()];
 
     // Merge tags — existing wins on ID conflict
     const existingTagIds = new Set(existingTags.map(t => t.id));
@@ -301,8 +304,15 @@ function restoreData(event) {
       ...(incoming.rules || []).filter(r => !existingRuleIds.has(r.id)),
     ];
 
-    // Merge plans — existing wins on date conflict
-    const mergedPlans = { ...(incoming.plans || {}), ...existingPlans };
+    // Merge plans — incoming wins on date conflict (backup plans override local)
+    const incomingPlans = incoming.plans || {};
+    let updatedPlans = 0;
+    let addedPlans = 0;
+    for (const date of Object.keys(incomingPlans)) {
+      if (existingPlans[date] !== undefined) updatedPlans++;
+      else addedPlans++;
+    }
+    const mergedPlans = { ...existingPlans, ...incomingPlans };
 
     save(mergedTrades);
     saveTags(mergedTags);
@@ -313,15 +323,17 @@ function restoreData(event) {
 
     refreshAllViews();
 
-    const addedTrades = mergedTrades.length - existingTrades.length;
-    const addedTags   = mergedTags.length   - existingTags.length;
-    const addedRules  = mergedRules.length  - existingRules.length;
-    const addedPlans  = Object.keys(mergedPlans).length - Object.keys(existingPlans).length;
+    const addedTags  = mergedTags.length  - existingTags.length;
+    const addedRules = mergedRules.length - existingRules.length;
 
-    const parts = [`${addedTrades} trade${addedTrades !== 1 ? 's' : ''}`];
-    if (addedTags  > 0) parts.push(`${addedTags} tag${addedTags !== 1 ? 's' : ''}`);
-    if (addedRules > 0) parts.push(`${addedRules} rule${addedRules !== 1 ? 's' : ''}`);
-    if (addedPlans > 0) parts.push(`${addedPlans} daily plan${addedPlans !== 1 ? 's' : ''}`);
+    const parts = [];
+    if (addedTrades   > 0) parts.push(`${addedTrades} trade${addedTrades !== 1 ? 's' : ''} added`);
+    if (updatedTrades > 0) parts.push(`${updatedTrades} trade${updatedTrades !== 1 ? 's' : ''} updated`);
+    if (addedTags     > 0) parts.push(`${addedTags} tag${addedTags !== 1 ? 's' : ''} added`);
+    if (addedRules    > 0) parts.push(`${addedRules} rule${addedRules !== 1 ? 's' : ''} added`);
+    if (addedPlans    > 0) parts.push(`${addedPlans} daily plan${addedPlans !== 1 ? 's' : ''} added`);
+    if (updatedPlans  > 0) parts.push(`${updatedPlans} daily plan${updatedPlans !== 1 ? 's' : ''} updated`);
+    if (parts.length === 0) parts.push('nothing new');
 
     showImportSuccess(parts.join(', ') + ' restored.');
   };
