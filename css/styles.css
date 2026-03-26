@@ -447,6 +447,10 @@ body {
   color: var(--text-muted);
   margin-top: 6px;
 }
+.day-count.day-partial {
+  color: var(--accent);
+  opacity: 0.85;
+}
 .day-open-pnl {
   font-size: 15px;
   font-weight: 700;
