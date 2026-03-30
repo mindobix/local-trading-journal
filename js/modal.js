@@ -39,7 +39,7 @@ function refreshWeekModal() {
   document.getElementById('day-summary').innerHTML = `
     <div class="ds-card">
       <div class="ds-label">Week P&amp;L</div>
-      <div class="ds-value ${pnlCls}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</div>
+      <div class="ds-value ${pnlCls}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
     </div>
     <div class="ds-card">
       <div class="ds-label">Trades</div>
@@ -78,7 +78,7 @@ function refreshWeekModal() {
 function tradeItemHtml(t) {
   const p    = getPnl(t);
   const pCls = p >= 0 ? 'pos' : 'neg';
-  const pStr = (p < 0 ? '-$' : '$') + Math.abs(p).toFixed(2);
+  const pStr = (p < 0 ? '-$' : '$') + Math.abs(p).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
   const openQty = getOpenQty(t);
   const unit    = t.type === 'option' ? 'contract' : 'share';
   const openHtml = openQty > 0
@@ -196,7 +196,7 @@ function refreshDayModal() {
   document.getElementById('day-summary').innerHTML = `
     <div class="ds-card">
       <div class="ds-label">Day P&amp;L</div>
-      <div class="ds-value ${pnlCls}">${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)}</div>
+      <div class="ds-value ${pnlCls}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
     </div>
     <div class="ds-card">
       <div class="ds-label">Trades</div>
@@ -263,7 +263,56 @@ function renderLegsGrid() {
     calcPreview();
     return;
   }
-  body.innerHTML = currentLegs.map(leg => `
+
+  // Pre-compute calculated columns (price-only, no fees — "gross")
+  const type = document.getElementById('f-type').value;
+  const mult = type === 'option' ? 100 : 1;
+  const buyQueue = [];
+  let runningPnl = 0;
+
+  const legCalc = currentLegs.map(leg => {
+    const price = parseFloat(leg.price)    || 0;
+    const qty   = parseFloat(leg.quantity) || 0;
+
+    if (leg.action === 'buy') {
+      buyQueue.push({ price, totalQty: qty, remaining: qty });
+      return { adjCost: qty * price * mult, adjProceed: null, grossPnl: null };
+    } else {
+      // Sell — FIFO match against buy queue (price only, no fees)
+      let sellLeft = qty, buyCost = 0, matched = 0;
+      for (const buy of buyQueue) {
+        if (buy.remaining <= 0 || sellLeft <= 0) continue;
+        const q = Math.min(buy.remaining, sellLeft);
+        buyCost += buy.price * q * mult;
+        matched  += q;
+        buy.remaining -= q;
+        sellLeft      -= q;
+      }
+      const proceed = price * qty * mult;
+      let grossPnl = null;
+      if (matched > 0) {
+        runningPnl += (price * matched * mult) - buyCost;
+        grossPnl = runningPnl;
+      }
+      return { adjCost: null, adjProceed: proceed, grossPnl };
+    }
+  });
+
+  body.innerHTML = currentLegs.map((leg, i) => {
+    const c = legCalc[i];
+
+    const fmt = n => Math.round(n).toLocaleString('en-US');
+    const adjCostHtml    = c.adjCost    !== null ? `$${fmt(c.adjCost)}`    : '—';
+    const adjProceedHtml = c.adjProceed !== null ? `$${fmt(c.adjProceed)}` : '—';
+
+    let grossPnlHtml = '—';
+    if (c.grossPnl !== null) {
+      const rounded = Math.round(c.grossPnl);
+      const color   = rounded >= 0 ? 'var(--green)' : 'var(--red)';
+      grossPnlHtml  = `<span style="color:${color}">${rounded < 0 ? '-$' : '$'}${fmt(Math.abs(rounded))}</span>`;
+    }
+
+    return `
     <div class="leg-row">
       <select class="leg-field leg-action-sel ${leg.action}"
         onchange="updateLeg('${leg.id}','action',this.value);this.className='leg-field leg-action-sel '+this.value">
@@ -280,9 +329,13 @@ function renderLegsGrid() {
         oninput="updateLeg('${leg.id}','commission',this.value)">
       <input type="number" class="leg-field" value="${leg.fees}" placeholder="0.00" step="0.01"
         oninput="updateLeg('${leg.id}','fees',this.value)">
+      <div class="leg-calc-cell">${adjCostHtml}</div>
+      <div class="leg-calc-cell">${adjProceedHtml}</div>
+      <div class="leg-calc-cell">${grossPnlHtml}</div>
       <button class="leg-del-btn" type="button" onclick="removeLeg('${leg.id}')">&#10005;</button>
-    </div>`
-  ).join('');
+    </div>`;
+  }).join('');
+
   calcPreview();
 }
 
@@ -420,7 +473,7 @@ function calcPreview() {
     el.style.color = 'var(--text-muted)';
   } else {
     pnl = Math.round(pnl * 100) / 100;
-    el.textContent = (pnl < 0 ? '-$' : '$') + Math.abs(pnl).toFixed(2);
+    el.textContent = (pnl < 0 ? '-$' : '$') + Math.abs(pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
     el.style.color = pnl >= 0 ? 'var(--green)' : 'var(--red)';
   }
 

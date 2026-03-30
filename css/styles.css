@@ -822,7 +822,7 @@ tbody tr:hover td { background: var(--surface2); }
 
 .legs-grid-header {
   display: grid;
-  grid-template-columns: 82px 175px 105px 65px 95px 85px 28px;
+  grid-template-columns: 82px 178px 80px 62px 82px 78px 75px 82px 76px 28px;
   gap: 5px;
   padding: 0 2px 5px;
 }
@@ -833,12 +833,28 @@ tbody tr:hover td { background: var(--surface2); }
   letter-spacing: 0.06em;
   color: var(--text-muted);
 }
+.legs-grid-header span:nth-child(n+7):nth-child(-n+9) {
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .leg-row {
   display: grid;
-  grid-template-columns: 82px 175px 105px 65px 95px 85px 28px;
+  grid-template-columns: 82px 178px 80px 62px 82px 78px 75px 82px 76px 28px;
   gap: 5px;
   margin-bottom: 5px;
   align-items: center;
+}
+.leg-calc-cell {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  padding: 0 4px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .leg-field {
   background: var(--surface);
