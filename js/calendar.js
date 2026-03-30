@@ -1,7 +1,10 @@
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-let curMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+const _savedMonth = localStorage.getItem('tj-cal-month');
+let curMonth = _savedMonth
+  ? new Date(parseInt(_savedMonth.split('-')[0]), parseInt(_savedMonth.split('-')[1]), 1)
+  : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
 
 function renderCalendar() {
   const trades = applyGlobalFilter(load());
@@ -173,12 +176,14 @@ function isoDate(d) {
 
 function shiftMonth(dir) {
   curMonth = new Date(curMonth.getFullYear(), curMonth.getMonth() + dir, 1);
+  localStorage.setItem('tj-cal-month', `${curMonth.getFullYear()}-${curMonth.getMonth()}`);
   renderCalendar();
   renderWeeklySummary();
 }
 
 function jumpToday() {
   curMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+  localStorage.removeItem('tj-cal-month');
   renderCalendar();
   renderWeeklySummary();
 }
