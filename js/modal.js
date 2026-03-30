@@ -253,7 +253,53 @@ function removeLeg(id) {
 function updateLeg(id, field, value) {
   const leg = currentLegs.find(l => l.id === id);
   if (leg) leg[field] = value;
+  refreshCalcCells();
   calcPreview();
+}
+
+function refreshCalcCells() {
+  const type = document.getElementById('f-type').value;
+  const mult = type === 'option' ? 100 : 1;
+  const fmt  = n => Math.round(n).toLocaleString('en-US');
+
+  const buyQueue = [];
+  let runningPnl = 0;
+
+  for (const leg of currentLegs) {
+    const price   = parseFloat(leg.price)    || 0;
+    const qty     = parseFloat(leg.quantity) || 0;
+    const costEl  = document.getElementById(`lc-cost-${leg.id}`);
+    const procEl  = document.getElementById(`lc-proc-${leg.id}`);
+    const pnlEl   = document.getElementById(`lc-pnl-${leg.id}`);
+    if (!costEl || !procEl || !pnlEl) continue;
+
+    if (leg.action === 'buy') {
+      buyQueue.push({ price, totalQty: qty, remaining: qty });
+      costEl.textContent = qty && price ? `$${fmt(qty * price * mult)}` : '—';
+      procEl.textContent = '—';
+      pnlEl.textContent  = '—';
+    } else {
+      let sellLeft = qty, buyCost = 0, matched = 0;
+      for (const buy of buyQueue) {
+        if (buy.remaining <= 0 || sellLeft <= 0) continue;
+        const q = Math.min(buy.remaining, sellLeft);
+        buyCost       += buy.price * q * mult;
+        matched       += q;
+        buy.remaining -= q;
+        sellLeft      -= q;
+      }
+      costEl.textContent = '—';
+      procEl.textContent = qty && price ? `$${fmt(qty * price * mult)}` : '—';
+      if (matched > 0) {
+        runningPnl    += (price * matched * mult) - buyCost;
+        const rounded  = Math.round(runningPnl);
+        const color    = rounded >= 0 ? 'var(--green)' : 'var(--red)';
+        pnlEl.innerHTML = `<span style="color:${color}">${rounded < 0 ? '-$' : '$'}${fmt(Math.abs(rounded))}</span>`;
+      } else {
+        pnlEl.textContent = '—';
+      }
+    }
+  }
 }
 
 function renderLegsGrid() {
@@ -329,9 +375,9 @@ function renderLegsGrid() {
         oninput="updateLeg('${leg.id}','commission',this.value)">
       <input type="number" class="leg-field" value="${leg.fees}" placeholder="0.00" step="0.01"
         oninput="updateLeg('${leg.id}','fees',this.value)">
-      <div class="leg-calc-cell">${adjCostHtml}</div>
-      <div class="leg-calc-cell">${adjProceedHtml}</div>
-      <div class="leg-calc-cell">${grossPnlHtml}</div>
+      <div class="leg-calc-cell" id="lc-cost-${leg.id}">${adjCostHtml}</div>
+      <div class="leg-calc-cell" id="lc-proc-${leg.id}">${adjProceedHtml}</div>
+      <div class="leg-calc-cell" id="lc-pnl-${leg.id}">${grossPnlHtml}</div>
       <button class="leg-del-btn" type="button" onclick="removeLeg('${leg.id}')">&#10005;</button>
     </div>`;
   }).join('');
