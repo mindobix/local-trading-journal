@@ -1,4 +1,4 @@
-const state = { view: 'calendar' };
+const state = { view: 'calendar', tradesVisited: false };
 
 function switchView(v) {
   state.view = v;
@@ -11,7 +11,14 @@ function switchView(v) {
   document.getElementById('nav-plan').classList.toggle('active',    v === 'plan');
   document.getElementById('nav-reports').classList.toggle('active', v === 'reports');
   updateFilterBarContext(v);
-  if (v === 'trades')   renderTrades();
+  if (v === 'trades') {
+    if (!state.tradesVisited) {
+      state.tradesVisited = true;
+      document.getElementById('gf-date').value = 'monthly';
+      onGlobalDateFilterChange();
+    }
+    renderTrades();
+  }
   if (v === 'calendar') renderCalendar();
   if (v === 'plan')     initPlanView();
   if (v === 'reports')  initReportsView();
