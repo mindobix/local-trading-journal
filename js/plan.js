@@ -1,214 +1,406 @@
-const PLANS_KEY = "tj-plans-v1";
+/* ── plan.js ── Trade Plan tab controller ────────────────────────── */
+
+// ── Daily plan journal storage ────────────────────────────────────
+const PLANS_KEY = 'tj-plans-v1';
 
 const PLAN_TEMPLATE = [
-  "<h3>Pre Market Plan</h3><p><br></p>",
-  "<h4>Affirmation</h4><p><br></p>",
-  "<h4>Market Analysis</h4><p><br></p>",
-  "<h4>Trade Plan</h4><p><br></p>",
-  "<h3>Day Recap</h3><p><br></p>",
-  "<h4>Mistakes I made</h4><p><br></p>",
-  "<h4>What I did great</h4><p><br></p>",
-  "<h4>Reinforcement to myself</h4><p><br></p>",
-  "<h3>Overall Recap</h3><p><br></p>",
-].join("");
-
-let activePlanDate = "";
-let planCalMonth = null; // { year, month }
-let planInitialized = false;
-
-// ─── Storage ───
+  '<h3>Pre Market Plan</h3><p><br></p>',
+  '<h4>Affirmation</h4><p><br></p>',
+  '<h4>Market Analysis</h4><p><br></p>',
+  '<h4>Trade Plan</h4><p><br></p>',
+  '<h3>Day Recap</h3><p><br></p>',
+  '<h4>Mistakes I made</h4><p><br></p>',
+  '<h4>What I did great</h4><p><br></p>',
+  '<h4>Reinforcement to myself</h4><p><br></p>',
+  '<h3>Overall Recap</h3><p><br></p>',
+].join('');
 
 function loadPlans() {
-  try {
-    return JSON.parse(localStorage.getItem(PLANS_KEY) || "{}");
-  } catch {
-    return {};
-  }
+  try { return JSON.parse(localStorage.getItem(PLANS_KEY) || '{}'); }
+  catch { return {}; }
 }
 
 function savePlanForDate(date, html) {
   const plans = loadPlans();
-  plans[date] = html;
+  plans[date]  = html;
   localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
 }
 
-// ─── Date helpers ───
+// ── Plan view state ───────────────────────────────────────────────
+const PLAN_STATE = {
+  view:   'monthly',
+  year:   new Date().getFullYear(),
+  month:  new Date().getMonth() + 1,
+  weekOf: null,   // set in initPlanView
+};
 
-function planIso(d) {
-  const pad = (n) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+let planInitialized = false;
+
+// ── Status config for cards ───────────────────────────────────────
+const STATUS_CFG = {
+  active:    { label: 'Active',     cls: 'status-active'    },
+  triggered: { label: 'Triggered',  cls: 'status-triggered' },
+  hit:       { label: 'Target Hit', cls: 'status-hit'       },
+  stopped:   { label: 'Stopped',    cls: 'status-stopped'   },
+};
+
+// ── Card rendering ────────────────────────────────────────────────
+function renderIdeaCard(idea) {
+  const color   = idea.customColor || tickerColor(idea.symbol);
+  const expiry  = idea.expiryDate  ? fmtShortDate(idea.expiryDate) : '\u2014';
+  const typeTag = idea.optionType  === 'put' ? 'P' : 'C';
+  const strike  = fmtPrice(idea.strikePrice);
+  const trigger = fmtPrice(idea.triggerPrice);
+  const stop    = fmtPrice(idea.stopPrice);
+  const letter  = (idea.symbol || '?')[0].toUpperCase();
+  const status  = STATUS_CFG[idea.status] || STATUS_CFG.active;
+
+  const targetsHtml = idea.targets && idea.targets.length
+    ? idea.targets.map(t => `<span class="target-val">${fmtPrice(t)}</span>`).join('')
+    : '<span class="target-val muted">\u2014</span>';
+
+  const infoLine = `${expiry}&nbsp;&nbsp;<span class="badge-strike ${idea.optionType === 'put' ? 'put' : 'call'}">${strike}${typeTag}</span>&nbsp;&nbsp;<span class="at-label">AT</span>&nbsp;&nbsp;<span class="trigger-val">${trigger}</span>`;
+
+  const notesHtml = idea.notes
+    ? `<div class="card-notes">${esc(idea.notes)}</div>`
+    : '';
+
+  return `
+<div class="option-card ${idea.status || 'active'}" data-id="${esc(idea.id)}" style="--card-clr:${color}" onclick="openEditIdeaModal('${esc(idea.id)}')">
+  <div class="card-glow"></div>
+  <div class="card-header">
+    <div class="card-logo" style="background:${color}22;color:${color}">${letter}</div>
+    <div class="card-ticker" style="color:${color}">$${esc(idea.symbol)}</div>
+    <div class="card-actions">
+      <button class="icon-btn" title="Edit" onclick="event.stopPropagation();openEditIdeaModal('${esc(idea.id)}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+      </button>
+      <button class="icon-btn del" title="Delete" onclick="event.stopPropagation();deleteIdea('${esc(idea.id)}')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3,6 5,6 21,6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+      </button>
+    </div>
+  </div>
+  <div class="card-divider" style="background:${color}33"></div>
+  <div class="card-info">${infoLine}</div>
+  <div class="card-divider" style="background:${color}22"></div>
+  <div class="card-levels">
+    <div class="card-targets">
+      <div class="levels-icon target-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/></svg>
+      </div>
+      <div class="target-prices">${targetsHtml}</div>
+    </div>
+    <div class="card-stop">
+      <div class="levels-icon stop-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </div>
+      <span class="stop-val">${stop}</span>
+    </div>
+  </div>
+  ${notesHtml}
+  <div class="card-footer">
+    <span class="card-status ${status.cls}">${status.label}</span>
+    <span class="card-date muted">${fmtShortDate(idea.weekOf)} wk</span>
+  </div>
+</div>`;
 }
 
-function planDefaultDate() {
-  const today = new Date();
-  const dow = today.getDay(); // 0=Sun,1=Mon,...,5=Fri,6=Sat
-  // If today is Fri/Sat/Sun → default to the following Monday
-  const daysAhead = dow === 5 ? 3 : dow === 6 ? 2 : dow === 0 ? 1 : 1;
-  const d = new Date(today);
-  d.setDate(today.getDate() + daysAhead);
-  return planIso(d);
+function renderAddIdeaCard(weekOf) {
+  return `
+<div class="add-card" onclick="openAddIdeaModal('${esc(weekOf)}')">
+  <div class="add-card-inner">
+    <div class="add-icon">+</div>
+    <span>Add Trade Plan</span>
+  </div>
+</div>`;
 }
 
-function fmtPlanDate(iso) {
-  const [y, m, d] = iso.split("-");
-  return new Date(+y, +m - 1, +d).toLocaleDateString("en-US", {
-    weekday: "long",
-    month: "long",
-    day: "numeric",
-    year: "numeric",
+// ── Navigation label ──────────────────────────────────────────────
+function updatePlanNavLabel() {
+  const el = document.getElementById('plan-nav-label');
+  if (!el) return;
+  el.textContent = PLAN_STATE.view === 'monthly'
+    ? fmtMonthLabel(PLAN_STATE.year, PLAN_STATE.month)
+    : fmtWeekRange(PLAN_STATE.weekOf);
+}
+
+// ── View switching ────────────────────────────────────────────────
+function switchPlanView(v) {
+  PLAN_STATE.view = v;
+  localStorage.setItem('plan-last-view', v);
+  document.querySelectorAll('.plan-view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+  if (v === 'monthly') {
+    const d = new Date(PLAN_STATE.weekOf + 'T12:00:00');
+    PLAN_STATE.year  = d.getFullYear();
+    PLAN_STATE.month = d.getMonth() + 1;
+  }
+  renderPlanView();
+}
+
+function planNavPrev() {
+  if (PLAN_STATE.view === 'monthly') {
+    PLAN_STATE.month--;
+    if (PLAN_STATE.month < 1) { PLAN_STATE.month = 12; PLAN_STATE.year--; }
+  } else {
+    const d = new Date(PLAN_STATE.weekOf + 'T12:00:00');
+    d.setDate(d.getDate() - 7);
+    PLAN_STATE.weekOf = d.toISOString().slice(0, 10);
+  }
+  renderPlanView();
+}
+
+function planNavNext() {
+  if (PLAN_STATE.view === 'monthly') {
+    PLAN_STATE.month++;
+    if (PLAN_STATE.month > 12) { PLAN_STATE.month = 1; PLAN_STATE.year++; }
+  } else {
+    const d = new Date(PLAN_STATE.weekOf + 'T12:00:00');
+    d.setDate(d.getDate() + 7);
+    PLAN_STATE.weekOf = d.toISOString().slice(0, 10);
+  }
+  renderPlanView();
+}
+
+function planNavToday() {
+  const now = new Date();
+  PLAN_STATE.year   = now.getFullYear();
+  PLAN_STATE.month  = now.getMonth() + 1;
+  PLAN_STATE.weekOf = getMondayOf(todayStr());
+  renderPlanView();
+}
+
+// ── Main render dispatcher ────────────────────────────────────────
+function renderPlanView() {
+  updatePlanNavLabel();
+  const { view, year, month, weekOf } = PLAN_STATE;
+  if (view === 'monthly')      renderPlanMonthlyView(year, month);
+  else if (view === 'weekly')  renderPlanWeeklyView(weekOf);
+  else                         renderPlanDailyView(weekOf);
+}
+
+// ── Monthly view ──────────────────────────────────────────────────
+function renderPlanMonthlyView(year, month) {
+  const ideas   = loadIdeas();
+  const weeks   = getWeeksInMonth(ideas, year, month);
+  const el      = document.getElementById('plan-main-content');
+
+  if (!weeks.length) {
+    el.innerHTML = `<div class="empty-state">
+      <div class="empty-icon">&#128203;</div>
+      <p>No trade plans for ${fmtMonthLabel(year, month)}</p>
+      <button class="btn-primary" onclick="openAddIdeaModal()">+ Add First Idea</button>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = weeks.map(monday => {
+    const weekIdeas  = ideas.filter(i => i.weekOf === monday);
+    const callCount  = weekIdeas.filter(i => i.optionType === 'call').length;
+    const putCount   = weekIdeas.filter(i => i.optionType === 'put').length;
+    const isCurrent  = monday === getMondayOf(todayStr());
+    return `
+<section class="week-section ${isCurrent ? 'current-week' : ''}">
+  <div class="week-header">
+    <div class="week-label">
+      ${isCurrent ? '<span class="current-badge">This Week</span>' : ''}
+      <span class="week-range">${fmtWeekRange(monday)}</span>
+    </div>
+    <div class="week-meta">
+      ${weekIdeas.length ? `<span class="meta-chip calls">${callCount}C</span><span class="meta-chip puts">${putCount}P</span>` : ''}
+      <span class="meta-chip total">${weekIdeas.length} total</span>
+    </div>
+  </div>
+  <div class="cards-grid">
+    ${weekIdeas.map(renderIdeaCard).join('')}
+    ${renderAddIdeaCard(monday)}
+  </div>
+</section>`;
+  }).join('');
+}
+
+// ── Weekly view ───────────────────────────────────────────────────
+function renderPlanWeeklyView(monday) {
+  const ideas     = loadIdeas().filter(i => i.weekOf === monday);
+  const callCount = ideas.filter(i => i.optionType === 'call').length;
+  const putCount  = ideas.filter(i => i.optionType === 'put').length;
+  const isCurrent = monday === getMondayOf(todayStr());
+  const el        = document.getElementById('plan-main-content');
+
+  el.innerHTML = `
+<section class="week-section ${isCurrent ? 'current-week' : ''}" style="margin-top:0">
+  <div class="week-header">
+    <div class="week-label">
+      ${isCurrent ? '<span class="current-badge">This Week</span>' : ''}
+      <span class="week-range">${fmtWeekRange(monday)}</span>
+    </div>
+    <div class="week-meta">
+      ${ideas.length ? `<span class="meta-chip calls">${callCount}C</span><span class="meta-chip puts">${putCount}P</span>` : ''}
+      <span class="meta-chip total">${ideas.length} plan${ideas.length !== 1 ? 's' : ''}</span>
+    </div>
+  </div>
+  <div class="cards-grid">
+    ${ideas.map(renderIdeaCard).join('')}
+    ${renderAddIdeaCard(monday)}
+  </div>
+</section>`;
+}
+
+// ── Daily view ────────────────────────────────────────────────────
+function renderPlanDailyView(monday) {
+  const allIdeas = loadIdeas();
+  const plans    = loadPlans();
+  const today    = todayStr();
+  const el       = document.getElementById('plan-main-content');
+
+  const days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday + 'T12:00:00');
+    d.setDate(d.getDate() + i);
+    return d.toISOString().slice(0, 10);
   });
+
+  el.innerHTML = days.map(date => {
+    const isToday   = date === today;
+    const dayIdeas  = allIdeas.filter(i => (i.createdAt || today) === date);
+    const callCount = dayIdeas.filter(i => i.optionType === 'call').length;
+    const putCount  = dayIdeas.filter(i => i.optionType === 'put').length;
+    const dayLabel  = new Date(date + 'T12:00:00').toLocaleDateString('en-US', {
+      weekday: 'long', month: 'short', day: 'numeric'
+    });
+    const hasPlan      = plans[date] !== undefined;
+    const planContent  = hasPlan ? plans[date] : PLAN_TEMPLATE;
+    const planVisible  = isToday; // today's plan section expanded by default
+
+    const deleteBtn = hasPlan
+      ? `<button class="plan-delete-btn" id="plan-del-btn-${date}" onclick="deleteDayPlan('${date}')">&#128465; Delete</button>`
+      : `<span id="plan-del-btn-${date}"></span>`;
+
+    return `
+<section class="week-section daily-day-section ${isToday ? 'current-week' : ''}">
+  <div class="week-header">
+    <div class="week-label">
+      ${isToday ? '<span class="current-badge">Today</span>' : ''}
+      <span class="week-range">${dayLabel}</span>
+    </div>
+    <div class="week-meta">
+      ${dayIdeas.length ? `<span class="meta-chip calls">${callCount}C</span><span class="meta-chip puts">${putCount}P</span>` : ''}
+      <span class="meta-chip total">${dayIdeas.length} plan${dayIdeas.length !== 1 ? 's' : ''}</span>
+      <button class="toggle-plan-btn ${hasPlan ? 'has-plan' : ''}" id="toggle-plan-btn-${date}"
+              onclick="toggleDayPlanSection('${date}')">
+        ${hasPlan ? '&#128196; Daily Plan' : '+ Daily Plan'}
+      </button>
+    </div>
+  </div>
+  <div class="cards-grid">
+    ${dayIdeas.map(renderIdeaCard).join('')}
+    ${renderAddIdeaCard(monday)}
+  </div>
+  <div class="day-plan-section" id="day-plan-section-${date}" style="display:${planVisible ? 'block' : 'none'}">
+    <div class="day-plan-bar">
+      <span class="day-plan-title">Daily Plan</span>
+      <div class="plan-editor-toolbar day-plan-toolbar">
+        <button class="plan-fmt-btn" onmousedown="event.preventDefault();planCmd('bold')"      title="Bold"><b>B</b></button>
+        <button class="plan-fmt-btn" onmousedown="event.preventDefault();planCmd('italic')"    title="Italic"><i>I</i></button>
+        <button class="plan-fmt-btn" onmousedown="event.preventDefault();planCmd('underline')" title="Underline"><u>U</u></button>
+      </div>
+      ${deleteBtn}
+    </div>
+    <div id="day-plan-editor-${date}"
+         class="plan-editor day-plan-editor"
+         contenteditable="true"
+         oninput="autoSaveDayPlan('${date}')">${planContent}</div>
+  </div>
+</section>`;
+  }).join('');
 }
 
-// ─── Mini Calendar ───
+// ── Daily plan editor actions ─────────────────────────────────────
+function toggleDayPlanSection(date) {
+  const section = document.getElementById('day-plan-section-' + date);
+  if (!section) return;
+  const opening = section.style.display === 'none';
+  section.style.display = opening ? 'block' : 'none';
+  if (opening) {
+    // Lazy-populate editor with saved content or template
+    const editor = document.getElementById('day-plan-editor-' + date);
+    if (editor && !editor._populated) {
+      const plans = loadPlans();
+      editor.innerHTML = plans[date] !== undefined ? plans[date] : PLAN_TEMPLATE;
+      editor._populated = true;
+    }
+  }
+}
 
-function renderPlanCalendar() {
+function autoSaveDayPlan(date) {
+  const editor = document.getElementById('day-plan-editor-' + date);
+  if (!editor) return;
+  savePlanForDate(date, editor.innerHTML);
+
+  // Show delete button once content exists
+  const delWrap = document.getElementById('plan-del-btn-' + date);
+  if (delWrap && delWrap.tagName === 'SPAN') {
+    delWrap.outerHTML = `<button class="plan-delete-btn" id="plan-del-btn-${date}" onclick="deleteDayPlan('${date}')">&#128465; Delete</button>`;
+  }
+
+  // Update toggle button label
+  const toggleBtn = document.getElementById('toggle-plan-btn-' + date);
+  if (toggleBtn) {
+    toggleBtn.textContent = '📋 Daily Plan';
+    toggleBtn.classList.add('has-plan');
+  }
+}
+
+function deleteDayPlan(date) {
+  if (!confirm('Delete the daily plan for this day? This cannot be undone.')) return;
   const plans = loadPlans();
-  const { year: yr, month: mo } = planCalMonth;
-  const todayIso = planIso(new Date());
-
-  document.getElementById("plan-month-label").textContent =
-    `${MONTH_NAMES[mo]} ${yr}`;
-
-  const DAY_HDRS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
-  const firstDow = new Date(yr, mo, 1).getDay();
-  const daysInMonth = new Date(yr, mo + 1, 0).getDate();
-  const prevDays = new Date(yr, mo, 0).getDate();
-
-  let html = DAY_HDRS.map((h) => `<div class="plan-cal-hdr">${h}</div>`).join(
-    "",
-  );
-
-  for (let i = firstDow - 1; i >= 0; i--)
-    html += `<div class="plan-cal-day other-month">${prevDays - i}</div>`;
-
-  for (let d = 1; d <= daysInMonth; d++) {
-    const ds = `${yr}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    const dow = new Date(yr, mo, d).getDay();
-    let cls = "plan-cal-day";
-    if (dow === 0 || dow === 6) cls += " weekend";
-    if (ds === todayIso) cls += " is-today";
-    if (ds === activePlanDate) cls += " selected";
-    if (plans[ds] !== undefined) cls += " has-plan";
-    html += `<div class="${cls}" onclick="selectPlanDate('${ds}')">${d}</div>`;
-  }
-
-  const used = firstDow + daysInMonth;
-  const rem = used % 7;
-  if (rem > 0)
-    for (let i = 1; i <= 7 - rem; i++)
-      html += `<div class="plan-cal-day other-month">${i}</div>`;
-
-  document.getElementById("plan-cal-grid").innerHTML = html;
-}
-
-function shiftPlanMonth(dir) {
-  let { year, month } = planCalMonth;
-  month += dir;
-  if (month < 0) {
-    month = 11;
-    year--;
-  }
-  if (month > 11) {
-    month = 0;
-    year++;
-  }
-  planCalMonth = { year, month };
-  renderPlanCalendar();
-}
-
-function selectPlanDate(date) {
-  activePlanDate = date;
-  loadPlanForDate(date);
-  renderPlanCalendar();
-}
-
-// ─── Editor ───
-
-function loadPlanForDate(date) {
-  activePlanDate = date;
-  const plans = loadPlans();
-  const editor = document.getElementById("plan-editor");
-  const wrap = document.getElementById("plan-editor-wrap");
-  const placeholder = document.getElementById("plan-placeholder");
-  const label = document.getElementById("plan-selected-label");
-  const delBtn = document.getElementById("plan-delete-btn");
-
-  if (!date) {
-    wrap.style.display = "none";
-    placeholder.style.display = "flex";
-    delBtn.style.display = "none";
-    label.textContent = "";
-    return;
-  }
-
-  const exists = plans[date] !== undefined;
-  editor.innerHTML = exists ? plans[date] : PLAN_TEMPLATE;
-  wrap.style.display = "block";
-  placeholder.style.display = "none";
-  delBtn.style.display = exists ? "inline-flex" : "none";
-  label.textContent = fmtPlanDate(date);
-  updatePlanToolbarState();
-}
-
-function autoSavePlan() {
-  if (!activePlanDate) return;
-  savePlanForDate(
-    activePlanDate,
-    document.getElementById("plan-editor").innerHTML,
-  );
-  document.getElementById("plan-delete-btn").style.display = "inline-flex";
-  renderPlanCalendar();
-}
-
-function deletePlan() {
-  if (!activePlanDate) return;
-  if (
-    !confirm(
-      `Delete the plan for ${fmtPlanDate(activePlanDate)}? This cannot be undone.`,
-    )
-  )
-    return;
-  const plans = loadPlans();
-  delete plans[activePlanDate];
+  delete plans[date];
   localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
-  loadPlanForDate(activePlanDate); // reload — no saved plan, shows template
-  renderPlanCalendar();
+  renderPlanView();
 }
 
 function planCmd(cmd) {
   document.execCommand(cmd, false, null);
-  document.getElementById("plan-editor").focus();
-  updatePlanToolbarState();
 }
 
-function updatePlanToolbarState() {
-  document
-    .getElementById("plan-btn-bold")
-    .classList.toggle("active", document.queryCommandState("bold"));
-  document
-    .getElementById("plan-btn-italic")
-    .classList.toggle("active", document.queryCommandState("italic"));
-  document
-    .getElementById("plan-btn-underline")
-    .classList.toggle("active", document.queryCommandState("underline"));
-}
-
-// ─── Init ───
-
+// ── Init (called from app.js when switching to plan tab) ──────────
 function initPlanView() {
   if (!planInitialized) {
     planInitialized = true;
-    const editor = document.getElementById("plan-editor");
-    editor.addEventListener("keyup", updatePlanToolbarState);
-    editor.addEventListener("mouseup", updatePlanToolbarState);
+
+    // Restore last view
+    const savedView = localStorage.getItem('plan-last-view');
+    if (savedView && ['monthly', 'weekly', 'daily'].includes(savedView)) {
+      PLAN_STATE.view = savedView;
+    }
+
+    // Init idea modal
+    initIdeaModal();
+
+    // Nav buttons
+    document.getElementById('plan-nav-prev').addEventListener('click', planNavPrev);
+    document.getElementById('plan-nav-next').addEventListener('click', planNavNext);
+    document.getElementById('plan-nav-today').addEventListener('click', planNavToday);
+
+    // View toggle buttons
+    document.querySelectorAll('.plan-view-btn').forEach(btn => {
+      btn.addEventListener('click', () => switchPlanView(btn.dataset.view));
+    });
   }
 
-  const def = planDefaultDate();
-  if (!activePlanDate) activePlanDate = def;
+  // Initialise weekOf on first load
+  if (!PLAN_STATE.weekOf) {
+    PLAN_STATE.weekOf = getMondayOf(todayStr());
+    // If current view is monthly, sync year/month from weekOf
+    if (PLAN_STATE.view === 'monthly') {
+      const d = new Date(PLAN_STATE.weekOf + 'T12:00:00');
+      PLAN_STATE.year  = d.getFullYear();
+      PLAN_STATE.month = d.getMonth() + 1;
+    }
+  }
 
-  const [y, m] = activePlanDate.split("-").map(Number);
-  planCalMonth = { year: y, month: m - 1 };
+  // Sync view button active state
+  document.querySelectorAll('.plan-view-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.view === PLAN_STATE.view);
+  });
 
-  renderPlanCalendar();
-  loadPlanForDate(activePlanDate);
+  renderPlanView();
 }

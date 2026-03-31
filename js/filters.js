@@ -173,14 +173,22 @@ function updateGfMultiLabel(type) {
 }
 
 function updateFilterBarContext(view) {
+  const isPlan = view === 'plan';
+
+  // Hide entire stats bar and filter bar on Trade Plan
+  const statsBar  = document.getElementById('stats-bar');
+  const filterBar = document.getElementById('global-filter-bar');
+  if (statsBar)  statsBar.style.display  = isPlan ? 'none' : '';
+  if (filterBar) filterBar.style.display = isPlan ? 'none' : '';
+
   const sideEl       = document.getElementById('gf-side');
   const tagsWrap     = document.getElementById('gf-tags-wrap');
   const rulesWrap    = document.getElementById('gf-rules-wrap');
   const mistakesWrap = document.getElementById('gf-mistakes-wrap');
   if (sideEl)       sideEl.style.display       = view === 'trades' ? '' : 'none';
-  if (tagsWrap)     tagsWrap.style.display      = view === 'plan'   ? 'none' : '';
-  if (rulesWrap)    rulesWrap.style.display     = view === 'plan'   ? 'none' : '';
-  if (mistakesWrap) mistakesWrap.style.display  = view === 'plan'   ? 'none' : '';
+  if (tagsWrap)     tagsWrap.style.display      = isPlan ? 'none' : '';
+  if (rulesWrap)    rulesWrap.style.display     = isPlan ? 'none' : '';
+  if (mistakesWrap) mistakesWrap.style.display  = isPlan ? 'none' : '';
   renderActiveFilters();
 }
 
@@ -323,6 +331,6 @@ function refreshAllViews() {
   const reportsVisible = document.getElementById('view-reports')?.style.display !== 'none';
   if (calVisible)     renderCalendar();
   if (tradesVisible)  renderTrades();
-  if (planVisible && typeof planCalMonth !== 'undefined' && planCalMonth) renderPlanCalendar();
+  if (planVisible && typeof PLAN_STATE !== 'undefined' && planInitialized) renderPlanView();
   if (reportsVisible) renderReportContent();
 }

@@ -14,7 +14,7 @@
   <nav class="nav">
     <button class="nav-btn active" id="nav-cal" onclick="switchView('calendar')">Calendar</button>
     <button class="nav-btn" id="nav-trades" onclick="switchView('trades')">Trades</button>
-    <button class="nav-btn" id="nav-plan" onclick="switchView('plan')">Daily Plan</button>
+    <button class="nav-btn" id="nav-plan" onclick="switchView('plan')">Trade Plan</button>
     <button class="nav-btn" id="nav-reports" onclick="switchView('reports')">Reports</button>
   </nav>
   <div class="header-spacer"></div>
@@ -108,41 +108,31 @@
     </div>
   </div>
 
-  <!-- Daily Plan View -->
+  <!-- Trade Plan View -->
   <div id="view-plan" style="display:none">
-    <div class="plan-layout">
 
-      <!-- Mini Calendar -->
-      <div class="plan-cal-panel">
-        <div class="plan-cal-nav">
-          <button class="arrow-btn" onclick="shiftPlanMonth(-1)">&#8592;</button>
-          <div class="plan-cal-month-label" id="plan-month-label"></div>
-          <button class="arrow-btn" onclick="shiftPlanMonth(1)">&#8594;</button>
-        </div>
-        <div class="plan-cal-grid" id="plan-cal-grid"></div>
+    <!-- Plan header bar: view toggle + navigation -->
+    <div class="plan-header-bar">
+      <div class="plan-view-toggle">
+        <button class="plan-view-btn" data-view="monthly">Monthly</button>
+        <button class="plan-view-btn" data-view="weekly">Weekly</button>
+        <button class="plan-view-btn active" data-view="daily">Daily</button>
       </div>
-
-      <!-- Editor Panel -->
-      <div class="plan-content">
-        <div class="plan-action-bar">
-          <div class="plan-selected-label" id="plan-selected-label"></div>
-          <button class="plan-delete-btn" id="plan-delete-btn" onclick="deletePlan()" title="Delete this day's plan">&#128465; Delete Plan</button>
-        </div>
-        <div id="plan-placeholder" class="plan-placeholder">
-          <div class="plan-placeholder-icon">&#128196;</div>
-          <div class="plan-placeholder-text">Select a date to view or create a daily plan</div>
-        </div>
-        <div id="plan-editor-wrap" class="plan-editor-wrap" style="display:none">
-          <div class="plan-editor-toolbar">
-            <button class="plan-fmt-btn" id="plan-btn-bold"      onclick="planCmd('bold')"      title="Bold"><b>B</b></button>
-            <button class="plan-fmt-btn" id="plan-btn-italic"    onclick="planCmd('italic')"    title="Italic"><i>I</i></button>
-            <button class="plan-fmt-btn" id="plan-btn-underline" onclick="planCmd('underline')" title="Underline"><u>U</u></button>
-          </div>
-          <div id="plan-editor" class="plan-editor" contenteditable="true" oninput="autoSavePlan()"></div>
-        </div>
+      <div class="plan-nav-controls" id="plan-nav-controls">
+        <button class="plan-nav-arrow" id="plan-nav-prev">&#8249;</button>
+        <span id="plan-nav-label">Loading&hellip;</span>
+        <button class="plan-nav-arrow" id="plan-nav-next">&#8250;</button>
+        <button class="plan-nav-today-btn" id="plan-nav-today">Today</button>
       </div>
-
+      <div style="flex:1"></div>
+      <button class="plan-add-btn" onclick="openAddIdeaModal()">+ Add Trade Plan</button>
     </div>
+
+    <!-- Main content (rendered by plan.js) -->
+    <div class="plan-main-wrap">
+      <div id="plan-main-content"></div>
+    </div>
+
   </div>
 
   <!-- Reports View -->
@@ -333,9 +323,135 @@
   </div>
 </div>
 
+<!-- ─── IDEA OVERLAY & MODAL ─── -->
+<div class="idea-overlay" id="idea-overlay"></div>
+<div class="idea-modal" id="idea-modal">
+  <div class="modal-hdr">
+    <span class="modal-title" id="idea-modal-title">Add Trade Plan</span>
+    <button class="modal-close" id="idea-modal-close">&#10005;</button>
+  </div>
+  <div class="modal-body">
+
+    <!-- Ticker & Option Type -->
+    <div class="form-section">
+      <div class="form-section-label">Ticker &amp; Option Type</div>
+      <div class="form-row">
+        <div class="fg">
+          <label>Symbol</label>
+          <input id="if-symbol" type="text" placeholder="TSLA" style="text-transform:uppercase">
+        </div>
+        <div class="fg">
+          <label>Option Type</label>
+          <div class="radio-row">
+            <div class="radio-opt">
+              <input type="radio" name="if-opt-type" id="if-r-call" value="call">
+              <label for="if-r-call" class="call">&#9650; Call</label>
+            </div>
+            <div class="radio-opt">
+              <input type="radio" name="if-opt-type" id="if-r-put" value="put">
+              <label for="if-r-put" class="put">&#9660; Put</label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Option Details -->
+    <div class="form-section">
+      <div class="form-section-label">Option Details</div>
+      <div class="form-row cols3">
+        <div class="fg">
+          <label>Strike Price</label>
+          <input id="if-strike" type="number" step="0.5" placeholder="380">
+        </div>
+        <div class="fg">
+          <label>Expiry Date</label>
+          <input id="if-expiry" type="date">
+        </div>
+        <div class="fg">
+          <label>Trigger (AT) Price</label>
+          <input id="if-trigger" type="number" step="0.01" placeholder="369">
+        </div>
+      </div>
+    </div>
+
+    <!-- Targets & Stop -->
+    <div class="form-section">
+      <div class="form-section-label">Targets &amp; Stop</div>
+      <div class="form-row cols3">
+        <div class="fg">
+          <label>&#127919; Target 1</label>
+          <input id="if-t1" type="number" step="0.01" placeholder="383">
+        </div>
+        <div class="fg">
+          <label>&#127919; Target 2 <span style="color:var(--text-muted)">(opt)</span></label>
+          <input id="if-t2" type="number" step="0.01" placeholder="390">
+        </div>
+        <div class="fg">
+          <label>&#127919; Target 3 <span style="color:var(--text-muted)">(opt)</span></label>
+          <input id="if-t3" type="number" step="0.01" placeholder="">
+        </div>
+      </div>
+      <div class="form-row cols1" style="margin-top:10px">
+        <div class="fg">
+          <label>&#10005; Stop Price</label>
+          <input id="if-stop" type="number" step="0.01" placeholder="360">
+        </div>
+      </div>
+    </div>
+
+    <!-- Schedule & Status -->
+    <div class="form-section">
+      <div class="form-section-label">Schedule &amp; Status</div>
+      <div class="form-row cols3">
+        <div class="fg">
+          <label>Created Date</label>
+          <input id="if-created" type="date">
+        </div>
+        <div class="fg">
+          <label>Week Of <span style="color:var(--text-muted)">(Monday)</span></label>
+          <input id="if-week" type="date">
+        </div>
+        <div class="fg">
+          <label>Status</label>
+          <select id="if-status">
+            <option value="active">Active</option>
+            <option value="triggered">Triggered</option>
+            <option value="hit">Target Hit</option>
+            <option value="stopped">Stopped</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Appearance & Notes -->
+    <div class="form-section">
+      <div class="form-section-label">Appearance &amp; Notes</div>
+      <div class="fg" style="margin-bottom:14px">
+        <label>Card Color <span style="color:var(--text-muted)" id="if-color-label-hint">(auto from ticker)</span></label>
+        <div class="swatch-grid" id="if-swatch-grid"></div>
+        <input id="if-color-picker" type="color" style="display:none">
+        <input id="if-color" type="hidden" value="">
+      </div>
+      <div class="fg">
+        <label>Notes <span style="color:var(--text-muted)">(opt)</span></label>
+        <textarea id="if-notes" placeholder="Setup context, catalyst…"></textarea>
+      </div>
+    </div>
+
+  </div><!-- /modal-body -->
+  <div class="modal-ftr">
+    <button class="btn-cancel" id="idea-modal-cancel">Cancel</button>
+    <button class="btn-save"   id="idea-modal-save">Save Trade Plan</button>
+  </div>
+</div>
+
 <script src="js/storage.js"></script>
-<script src="js/plan.js"></script>
+<script src="js/wotp-storage.js"></script>
 <script src="js/helpers.js"></script>
+<script src="js/wotp-helpers.js"></script>
+<script src="js/wotp-modal.js"></script>
+<script src="js/plan.js"></script>
 <script src="js/calc.js"></script>
 <script src="js/filters.js"></script>
 <script src="js/stats.js"></script>

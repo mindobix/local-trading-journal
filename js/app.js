@@ -224,13 +224,14 @@ function closeImportErrors() {
 
 function backupData() {
   const backup = {
-    version:    2,
+    version:    3,
     exportedAt: new Date().toISOString(),
     trades:   load(),
     tags:     loadTags(),
     mistakes: loadMistakes(),
     rules:    loadRules(),
     plans:    loadPlans(),
+    ideas:    loadIdeas(),
   };
   const json  = JSON.stringify(backup, null, 2);
   const blob  = new Blob([json], { type: 'application/json' });
@@ -274,15 +275,16 @@ function restoreData(event) {
     const existingMistakes = loadMistakes();
     const existingRules    = loadRules();
     const existingPlans    = loadPlans();
+    const existingIdeas    = loadIdeas();
 
     const hasCurrent = existingTrades.length || existingTags.length ||
                        existingMistakes.length || existingRules.length ||
-                       Object.keys(existingPlans).length;
+                       Object.keys(existingPlans).length || existingIdeas.length;
 
     if (hasCurrent) {
       const msg = isLegacy
         ? 'You have existing data. Restoring a legacy backup will merge trades only. Continue?'
-        : 'You have existing data. Restoring will merge trades, tags, mistakes, rules, and daily plans. Backup entries take priority on conflicts. Continue?';
+        : 'You have existing data. Restoring will merge trades, tags, mistakes, rules, daily plans, and trade plan ideas. Backup entries take priority on conflicts. Continue?';
       if (!confirm(msg)) { event.target.value = ''; return; }
     }
 
@@ -327,11 +329,22 @@ function restoreData(event) {
     }
     const mergedPlans = { ...existingPlans, ...incomingPlans };
 
+    // Merge ideas — incoming wins on ID conflict (backup ideas override local)
+    const existingIdeaMap = new Map(existingIdeas.map(i => [i.id, i]));
+    let updatedIdeas = 0;
+    for (const i of (incoming.ideas || [])) {
+      if (existingIdeaMap.has(i.id)) updatedIdeas++;
+      existingIdeaMap.set(i.id, i);
+    }
+    const addedIdeas  = (incoming.ideas || []).length - updatedIdeas;
+    const mergedIdeas = [...existingIdeaMap.values()];
+
     save(mergedTrades);
     saveTags(mergedTags);
     saveMistakes(mergedMistakes);
     saveRules(mergedRules);
     localStorage.setItem(PLANS_KEY, JSON.stringify(mergedPlans));
+    saveIdeas(mergedIdeas);
 
     event.target.value = '';
 
@@ -349,6 +362,8 @@ function restoreData(event) {
     if (addedRules    > 0) parts.push(`${addedRules} rule${addedRules !== 1 ? 's' : ''} added`);
     if (addedPlans    > 0) parts.push(`${addedPlans} daily plan${addedPlans !== 1 ? 's' : ''} added`);
     if (updatedPlans  > 0) parts.push(`${updatedPlans} daily plan${updatedPlans !== 1 ? 's' : ''} updated`);
+    if (addedIdeas    > 0) parts.push(`${addedIdeas} trade plan idea${addedIdeas !== 1 ? 's' : ''} added`);
+    if (updatedIdeas  > 0) parts.push(`${updatedIdeas} trade plan idea${updatedIdeas !== 1 ? 's' : ''} updated`);
     if (parts.length === 0) parts.push('nothing new');
 
     showImportSuccess(parts.join(', ') + ' restored.');
