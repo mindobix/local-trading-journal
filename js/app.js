@@ -2,16 +2,19 @@ const state = { view: 'calendar' };
 
 function switchView(v) {
   state.view = v;
-  document.getElementById('view-cal').style.display    = v === 'calendar' ? 'block' : 'none';
-  document.getElementById('view-trades').style.display = v === 'trades'   ? 'block' : 'none';
-  document.getElementById('view-plan').style.display   = v === 'plan'     ? 'block' : 'none';
-  document.getElementById('nav-cal').classList.toggle('active',    v === 'calendar');
-  document.getElementById('nav-trades').classList.toggle('active', v === 'trades');
-  document.getElementById('nav-plan').classList.toggle('active',   v === 'plan');
+  document.getElementById('view-cal').style.display     = v === 'calendar' ? 'block' : 'none';
+  document.getElementById('view-trades').style.display  = v === 'trades'   ? 'block' : 'none';
+  document.getElementById('view-plan').style.display    = v === 'plan'     ? 'block' : 'none';
+  document.getElementById('view-reports').style.display = v === 'reports'  ? 'block' : 'none';
+  document.getElementById('nav-cal').classList.toggle('active',     v === 'calendar');
+  document.getElementById('nav-trades').classList.toggle('active',  v === 'trades');
+  document.getElementById('nav-plan').classList.toggle('active',    v === 'plan');
+  document.getElementById('nav-reports').classList.toggle('active', v === 'reports');
   updateFilterBarContext(v);
   if (v === 'trades')   renderTrades();
   if (v === 'calendar') renderCalendar();
   if (v === 'plan')     initPlanView();
+  if (v === 'reports')  initReportsView();
 }
 
 function openAddGlobal() {

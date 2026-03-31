@@ -15,6 +15,7 @@
     <button class="nav-btn active" id="nav-cal" onclick="switchView('calendar')">Calendar</button>
     <button class="nav-btn" id="nav-trades" onclick="switchView('trades')">Trades</button>
     <button class="nav-btn" id="nav-plan" onclick="switchView('plan')">Daily Plan</button>
+    <button class="nav-btn" id="nav-reports" onclick="switchView('reports')">Reports</button>
   </nav>
   <div class="header-spacer"></div>
   <button class="header-util-btn csv-dl-btn" onclick="downloadCSVTemplate()" title="Download a CSV template with example trades">&#8681; CSV Template</button>
@@ -141,6 +142,19 @@
         </div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- Reports View -->
+  <div id="view-reports" style="display:none">
+    <div class="reports-layout">
+      <div class="reports-subtabs">
+        <button class="report-subtab active" id="rtab-days"      onclick="switchReportTab('days')">Days</button>
+        <button class="report-subtab"        id="rtab-months"    onclick="switchReportTab('months')">Months</button>
+        <button class="report-subtab"        id="rtab-tradetime" onclick="switchReportTab('tradetime')">Trade time</button>
+        <button class="report-subtab"        id="rtab-duration"  onclick="switchReportTab('duration')">Trade duration</button>
+      </div>
+      <div id="reports-content"></div>
     </div>
   </div>
 
@@ -328,6 +342,7 @@
 <script src="js/calendar.js"></script>
 <script src="js/trades.js"></script>
 <script src="js/modal.js"></script>
+<script src="js/reports.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
