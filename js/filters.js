@@ -1,8 +1,48 @@
 // ─── GLOBAL FILTER STATE ───
 let openPosFilterActive = false;
-let gfSelectedTags     = [];
-let gfSelectedRules    = [];
-let gfSelectedMistakes = [];
+let gfSelectedTags     = { include: [], exclude: [] };
+let gfSelectedRules    = { include: [], exclude: [] };
+let gfSelectedMistakes = { include: [], exclude: [] };
+const gfMultiActiveTab = { tags: 'include', rules: 'include', mistakes: 'include' };
+
+// ─── PER-TAB FILTER SNAPSHOTS ───
+// Each filterable tab (calendar, trades) keeps its own independent filter state.
+const _emptySnap = () => ({ srch:'', type:'', side:'', date:'', from:'', to:'', tags:{include:[],exclude:[]}, rules:{include:[],exclude:[]}, mistakes:{include:[],exclude:[]}, openPos:false });
+const filterSnapshots = { calendar: _emptySnap(), trades: _emptySnap() };
+let filterView = 'calendar'; // which tab's filters are currently shown in the bar
+
+function _captureFilterSnapshot() {
+  return {
+    srch:     document.getElementById('gf-srch')?.value || '',
+    type:     document.getElementById('gf-type')?.value || '',
+    side:     document.getElementById('gf-side')?.value || '',
+    date:     document.getElementById('gf-date')?.value || '',
+    from:     document.getElementById('gf-from')?.value || '',
+    to:       document.getElementById('gf-to')?.value   || '',
+    tags:     { include: [...gfSelectedTags.include],     exclude: [...gfSelectedTags.exclude] },
+    rules:    { include: [...gfSelectedRules.include],    exclude: [...gfSelectedRules.exclude] },
+    mistakes: { include: [...gfSelectedMistakes.include], exclude: [...gfSelectedMistakes.exclude] },
+    openPos:  openPosFilterActive,
+  };
+}
+
+function _applyFilterSnapshot(snap) {
+  document.getElementById('gf-srch').value = snap.srch;
+  document.getElementById('gf-type').value = snap.type;
+  document.getElementById('gf-side').value = snap.side;
+  document.getElementById('gf-date').value = snap.date;
+  document.getElementById('gf-from').value = snap.from;
+  document.getElementById('gf-to').value   = snap.to;
+  document.getElementById('gf-custom-range').style.display = snap.date === 'custom' ? 'flex' : 'none';
+  gfSelectedTags     = { include: [...snap.tags.include],     exclude: [...snap.tags.exclude] };
+  gfSelectedRules    = { include: [...snap.rules.include],    exclude: [...snap.rules.exclude] };
+  gfSelectedMistakes = { include: [...snap.mistakes.include], exclude: [...snap.mistakes.exclude] };
+  updateGfMultiLabel('tags');
+  updateGfMultiLabel('rules');
+  updateGfMultiLabel('mistakes');
+  openPosFilterActive = snap.openPos;
+  document.getElementById('gf-open-pos-btn')?.classList.toggle('active', snap.openPos);
+}
 
 function getDateRange(preset) {
   const now   = new Date();
@@ -53,21 +93,36 @@ function applyGlobalFilter(trades) {
     if (fTo)   filtered = filtered.filter(t => t.date <= fTo);
   }
 
-  if (gfSelectedTags.length) {
+  if (gfSelectedTags.include.length) {
     filtered = filtered.filter(t =>
-      Array.isArray(t.tags) && gfSelectedTags.some(id => t.tags.includes(id))
+      Array.isArray(t.tags) && gfSelectedTags.include.some(id => t.tags.includes(id))
+    );
+  }
+  if (gfSelectedTags.exclude.length) {
+    filtered = filtered.filter(t =>
+      !Array.isArray(t.tags) || !gfSelectedTags.exclude.some(id => t.tags.includes(id))
     );
   }
 
-  if (gfSelectedRules.length) {
+  if (gfSelectedRules.include.length) {
     filtered = filtered.filter(t =>
-      Array.isArray(t.rules) && gfSelectedRules.some(id => t.rules.includes(id))
+      Array.isArray(t.rules) && gfSelectedRules.include.some(id => t.rules.includes(id))
+    );
+  }
+  if (gfSelectedRules.exclude.length) {
+    filtered = filtered.filter(t =>
+      !Array.isArray(t.rules) || !gfSelectedRules.exclude.some(id => t.rules.includes(id))
     );
   }
 
-  if (gfSelectedMistakes.length) {
+  if (gfSelectedMistakes.include.length) {
     filtered = filtered.filter(t =>
-      Array.isArray(t.mistakes) && gfSelectedMistakes.some(id => t.mistakes.includes(id))
+      Array.isArray(t.mistakes) && gfSelectedMistakes.include.some(id => t.mistakes.includes(id))
+    );
+  }
+  if (gfSelectedMistakes.exclude.length) {
+    filtered = filtered.filter(t =>
+      !Array.isArray(t.mistakes) || !gfSelectedMistakes.exclude.some(id => t.mistakes.includes(id))
     );
   }
 
@@ -103,9 +158,9 @@ function resetGlobalFilters() {
   document.getElementById('gf-from').value  = '';
   document.getElementById('gf-to').value    = '';
   document.getElementById('gf-custom-range').style.display = 'none';
-  gfSelectedTags     = [];
-  gfSelectedRules    = [];
-  gfSelectedMistakes = [];
+  gfSelectedTags     = { include: [], exclude: [] };
+  gfSelectedRules    = { include: [], exclude: [] };
+  gfSelectedMistakes = { include: [], exclude: [] };
   updateGfMultiLabel('tags');
   updateGfMultiLabel('rules');
   updateGfMultiLabel('mistakes');
@@ -119,21 +174,35 @@ function resetGlobalFilters() {
 // ─── MULTI-SELECT DROPDOWN ───
 
 function buildGfMultiDrop(type) {
-  const items = type === 'tags' ? loadTags() : type === 'mistakes' ? loadMistakes() : loadRules();
-  const drop  = document.getElementById(`gf-${type}-drop`);
-  const sel   = type === 'tags' ? gfSelectedTags : type === 'mistakes' ? gfSelectedMistakes : gfSelectedRules;
+  const items     = type === 'tags' ? loadTags() : type === 'mistakes' ? loadMistakes() : loadRules();
+  const drop      = document.getElementById(`gf-${type}-drop`);
+  const sel       = type === 'tags' ? gfSelectedTags : type === 'mistakes' ? gfSelectedMistakes : gfSelectedRules;
+  const activeTab = gfMultiActiveTab[type];
   if (!drop) return;
+
+  const tabsHtml = `<div class="gf-multi-tabs">
+    <button class="gf-multi-tab ${activeTab === 'include' ? 'active include' : ''}" onclick="setGfMultiTab('${type}','include')">Include</button>
+    <button class="gf-multi-tab ${activeTab === 'exclude' ? 'active exclude' : ''}" onclick="setGfMultiTab('${type}','exclude')">Exclude</button>
+  </div>`;
+
   if (!items.length) {
-    drop.innerHTML = `<div class="gf-multi-empty">No ${type} defined yet</div>`;
+    drop.innerHTML = tabsHtml + `<div class="gf-multi-empty">No ${type} defined yet</div>`;
     return;
   }
-  drop.innerHTML = items.map(item =>
+
+  drop.innerHTML = tabsHtml + items.map(item =>
     `<label class="gf-multi-item">
-      <input type="checkbox" class="gf-check-${type}" value="${item.id}" ${sel.includes(item.id) ? 'checked' : ''}
+      <input type="checkbox" class="gf-check-${type}" value="${item.id}" ${sel[activeTab].includes(item.id) ? 'checked' : ''}
         onchange="onGfMultiChange('${type}','${item.id}',this.checked)">
       <span>${item.text}</span>
     </label>`
   ).join('');
+}
+
+function setGfMultiTab(type, tab) {
+  gfMultiActiveTab[type] = tab;
+  buildGfMultiDrop(type);
+  document.getElementById(`gf-${type}-drop`)?.classList.add('open');
 }
 
 function toggleGfMultiDrop(type) {
@@ -145,15 +214,12 @@ function toggleGfMultiDrop(type) {
 }
 
 function onGfMultiChange(type, id, checked) {
-  if (type === 'tags') {
-    if (checked) { if (!gfSelectedTags.includes(id)) gfSelectedTags.push(id); }
-    else gfSelectedTags = gfSelectedTags.filter(x => x !== id);
-  } else if (type === 'mistakes') {
-    if (checked) { if (!gfSelectedMistakes.includes(id)) gfSelectedMistakes.push(id); }
-    else gfSelectedMistakes = gfSelectedMistakes.filter(x => x !== id);
+  const sel       = type === 'tags' ? gfSelectedTags : type === 'mistakes' ? gfSelectedMistakes : gfSelectedRules;
+  const activeTab = gfMultiActiveTab[type];
+  if (checked) {
+    if (!sel[activeTab].includes(id)) sel[activeTab].push(id);
   } else {
-    if (checked) { if (!gfSelectedRules.includes(id)) gfSelectedRules.push(id); }
-    else gfSelectedRules = gfSelectedRules.filter(x => x !== id);
+    sel[activeTab] = sel[activeTab].filter(x => x !== id);
   }
   updateGfMultiLabel(type);
   renderActiveFilters();
@@ -165,21 +231,34 @@ function updateGfMultiLabel(type) {
   const label = document.getElementById(`gf-${type}-label`);
   const btn   = document.getElementById(`gf-${type}-btn`);
   if (!label) return;
-  const noun = type === 'tags' ? 'Tag' : type === 'mistakes' ? 'Mistake' : 'Rule';
-  label.textContent = sel.length === 0
+  const noun  = type === 'tags' ? 'Tag' : type === 'mistakes' ? 'Mistake' : 'Rule';
+  const total = sel.include.length + sel.exclude.length;
+  label.textContent = total === 0
     ? `All ${noun}s`
-    : `${sel.length} ${noun}${sel.length !== 1 ? 's' : ''}`;
-  if (btn) btn.classList.toggle('active', sel.length > 0);
+    : `${total} ${noun}${total !== 1 ? 's' : ''}`;
+  if (btn) btn.classList.toggle('active', total > 0);
 }
 
 function updateFilterBarContext(view) {
-  const isPlan = view === 'plan';
+  // Save current filter state when leaving a filterable tab
+  if ((filterView === 'calendar' || filterView === 'trades') && view !== filterView) {
+    filterSnapshots[filterView] = _captureFilterSnapshot();
+  }
+  // Restore saved filter state when entering a filterable tab
+  if ((view === 'calendar' || view === 'trades') && view !== filterView) {
+    _applyFilterSnapshot(filterSnapshots[view]);
+  }
+  if (view === 'calendar' || view === 'trades') filterView = view;
 
-  // Hide entire stats bar and filter bar on Trade Plan
+  const isPlan    = view === 'plan';
+  const isReports = view === 'reports';
+  const hideChrome = isPlan || isReports;
+
+  // Hide entire stats bar and filter bar on Trade Plan and Reports
   const statsBar  = document.getElementById('stats-bar');
   const filterBar = document.getElementById('global-filter-bar');
-  if (statsBar)  statsBar.style.display  = isPlan ? 'none' : '';
-  if (filterBar) filterBar.style.display = isPlan ? 'none' : '';
+  if (statsBar)  statsBar.style.display  = hideChrome ? 'none' : '';
+  if (filterBar) filterBar.style.display = hideChrome ? 'none' : '';
 
   const sideEl       = document.getElementById('gf-side');
   const tagsWrap     = document.getElementById('gf-tags-wrap');
@@ -200,7 +279,7 @@ function renderActiveFilters() {
   if (!bar || !chips) return;
 
   const view = (typeof state !== 'undefined') ? state.view : 'calendar';
-  if (view === 'plan') { bar.style.display = 'none'; return; }
+  if (view === 'plan' || view === 'reports') { bar.style.display = 'none'; return; }
 
   const srch  = document.getElementById('gf-srch')?.value  || '';
   const fType = document.getElementById('gf-type')?.value  || '';
@@ -247,29 +326,53 @@ function renderActiveFilters() {
     );
   }
 
-  for (const id of gfSelectedTags) {
+  for (const id of gfSelectedTags.include) {
     const tag = allTags.find(t => t.id === id);
     if (tag) parts.push(
-      `<span class="gf-chip gf-chip-tag">Tag: ${tag.text}
-        <button class="gf-chip-x" onclick="clearGfChip('tag','${id}')" title="Remove">&#10005;</button>
+      `<span class="gf-chip gf-chip-tag">Incl Tag: ${tag.text}
+        <button class="gf-chip-x" onclick="clearGfChip('tag-incl','${id}')" title="Remove">&#10005;</button>
+      </span>`
+    );
+  }
+  for (const id of gfSelectedTags.exclude) {
+    const tag = allTags.find(t => t.id === id);
+    if (tag) parts.push(
+      `<span class="gf-chip gf-chip-tag gf-chip-excl">Excl Tag: ${tag.text}
+        <button class="gf-chip-x" onclick="clearGfChip('tag-excl','${id}')" title="Remove">&#10005;</button>
       </span>`
     );
   }
 
-  for (const id of gfSelectedRules) {
+  for (const id of gfSelectedRules.include) {
     const rule = allRules.find(r => r.id === id);
     if (rule) parts.push(
-      `<span class="gf-chip gf-chip-rule">Rule: ${rule.text}
-        <button class="gf-chip-x" onclick="clearGfChip('rule','${id}')" title="Remove">&#10005;</button>
+      `<span class="gf-chip gf-chip-rule">Incl Rule: ${rule.text}
+        <button class="gf-chip-x" onclick="clearGfChip('rule-incl','${id}')" title="Remove">&#10005;</button>
+      </span>`
+    );
+  }
+  for (const id of gfSelectedRules.exclude) {
+    const rule = allRules.find(r => r.id === id);
+    if (rule) parts.push(
+      `<span class="gf-chip gf-chip-rule gf-chip-excl">Excl Rule: ${rule.text}
+        <button class="gf-chip-x" onclick="clearGfChip('rule-excl','${id}')" title="Remove">&#10005;</button>
       </span>`
     );
   }
 
-  for (const id of gfSelectedMistakes) {
+  for (const id of gfSelectedMistakes.include) {
     const mistake = allMistakes.find(m => m.id === id);
     if (mistake) parts.push(
-      `<span class="gf-chip gf-chip-mistake">Mistake: ${mistake.text}
-        <button class="gf-chip-x" onclick="clearGfChip('mistake','${id}')" title="Remove">&#10005;</button>
+      `<span class="gf-chip gf-chip-mistake">Incl Mistake: ${mistake.text}
+        <button class="gf-chip-x" onclick="clearGfChip('mistake-incl','${id}')" title="Remove">&#10005;</button>
+      </span>`
+    );
+  }
+  for (const id of gfSelectedMistakes.exclude) {
+    const mistake = allMistakes.find(m => m.id === id);
+    if (mistake) parts.push(
+      `<span class="gf-chip gf-chip-mistake gf-chip-excl">Excl Mistake: ${mistake.text}
+        <button class="gf-chip-x" onclick="clearGfChip('mistake-excl','${id}')" title="Remove">&#10005;</button>
       </span>`
     );
   }
@@ -302,16 +405,28 @@ function clearGfChip(type, id) {
       document.getElementById('gf-to').value   = '';
       document.getElementById('gf-custom-range').style.display = 'none';
       break;
-    case 'tag':
-      gfSelectedTags = gfSelectedTags.filter(x => x !== id);
+    case 'tag-incl':
+      gfSelectedTags.include = gfSelectedTags.include.filter(x => x !== id);
       updateGfMultiLabel('tags');
       break;
-    case 'rule':
-      gfSelectedRules = gfSelectedRules.filter(x => x !== id);
+    case 'tag-excl':
+      gfSelectedTags.exclude = gfSelectedTags.exclude.filter(x => x !== id);
+      updateGfMultiLabel('tags');
+      break;
+    case 'rule-incl':
+      gfSelectedRules.include = gfSelectedRules.include.filter(x => x !== id);
       updateGfMultiLabel('rules');
       break;
-    case 'mistake':
-      gfSelectedMistakes = gfSelectedMistakes.filter(x => x !== id);
+    case 'rule-excl':
+      gfSelectedRules.exclude = gfSelectedRules.exclude.filter(x => x !== id);
+      updateGfMultiLabel('rules');
+      break;
+    case 'mistake-incl':
+      gfSelectedMistakes.include = gfSelectedMistakes.include.filter(x => x !== id);
+      updateGfMultiLabel('mistakes');
+      break;
+    case 'mistake-excl':
+      gfSelectedMistakes.exclude = gfSelectedMistakes.exclude.filter(x => x !== id);
       updateGfMultiLabel('mistakes');
       break;
     case 'openpos':
