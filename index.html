@@ -259,6 +259,56 @@
 
         <hr class="section-divider">
 
+        <!-- Profit Targets & Stop Loss -->
+        <div class="targets-sl-wrap">
+          <div class="targets-sl-col">
+            <div class="targets-sl-header">
+              <span class="targets-sl-label">Profit Target</span>
+              <span class="ts-info-icon" title="Price targets where you plan to take profits">ⓘ</span>
+            </div>
+            <div class="ts-col-subhdr">
+              <span class="ts-mode-lbl">Target in Price</span>
+              <span class="ts-qty-lbl">Qty</span>
+            </div>
+            <div id="f-profit-targets-body" class="ts-rows-body"></div>
+            <button type="button" class="ts-add-btn" onclick="addProfitTarget()">+</button>
+          </div>
+          <div class="targets-sl-col">
+            <div class="targets-sl-header">
+              <span class="targets-sl-label ts-sl-label">Stop Loss</span>
+              <span class="ts-info-icon" title="Stop loss prices where you would exit to limit risk">ⓘ</span>
+            </div>
+            <div class="ts-col-subhdr">
+              <span class="ts-mode-lbl">Target in Price</span>
+              <span class="ts-qty-lbl">Qty</span>
+            </div>
+            <div id="f-stop-loss-body" class="ts-rows-body"></div>
+            <button type="button" class="ts-add-btn" onclick="addStopLoss()">+</button>
+          </div>
+        </div>
+
+        <!-- Live Target / Risk Preview -->
+        <div class="ts-preview" id="ts-preview" style="display:none">
+          <div class="ts-prev-item">
+            <div class="ts-prev-label">Initial Target</div>
+            <div class="ts-prev-val" id="ts-prev-target">—</div>
+          </div>
+          <div class="ts-prev-item">
+            <div class="ts-prev-label">Trade Risk</div>
+            <div class="ts-prev-val" id="ts-prev-risk">—</div>
+          </div>
+          <div class="ts-prev-item">
+            <div class="ts-prev-label">Planned R-Multiple</div>
+            <div class="ts-prev-val" id="ts-prev-planned-r">—</div>
+          </div>
+          <div class="ts-prev-item">
+            <div class="ts-prev-label">Realized R-Multiple</div>
+            <div class="ts-prev-val" id="ts-prev-realized-r">—</div>
+          </div>
+        </div>
+
+        <hr class="section-divider">
+
         <div class="form-row cols1">
           <div class="fg">
             <label>Notes</label>

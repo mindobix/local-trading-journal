@@ -131,7 +131,9 @@ function tradeItemHtml(t) {
     return badges.length ? `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:4px">${badges.join('')}</div>` : '';
   })();
 
-  return `<div class="trade-item">
+  const summaryHtml = tradeItemSummaryHtml(t);
+
+  return `<div class="trade-item" data-trade-id="${t.id}">
     <div style="flex:1;min-width:0">
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
         <div class="ti-sym">${t.symbol}</div>
@@ -141,6 +143,7 @@ function tradeItemHtml(t) {
       ${t.notes ? `<div style="font-size:12px;color:var(--text-muted);margin-top:4px;font-style:italic">${escHtml(t.notes)}</div>` : ''}
       ${badgesLine}
     </div>
+    ${summaryHtml}
     <div class="ti-pnl-wrap">
       <div class="ti-pnl ${pCls}">${pStr}</div>
       ${openHtml}
@@ -226,7 +229,9 @@ function closeModal() {
 
 // ─── TRADE FORM — LEGS ───
 
-let currentLegs = [];
+let currentLegs          = [];
+let currentProfitTargets = [];
+let currentStopLoss      = [];
 
 function addLeg(action = 'buy') {
   // Default datetime: activeDate at current time, or now
@@ -385,9 +390,227 @@ function renderLegsGrid() {
   calcPreview();
 }
 
+// ─── PROFIT TARGETS & STOP LOSS ───
+
+function addProfitTarget() {
+  currentProfitTargets.push({ id: uid(), price: '', qty: '' });
+  renderProfitTargets();
+  updateTSPreview();
+}
+function removeProfitTarget(id) {
+  currentProfitTargets = currentProfitTargets.filter(r => r.id !== id);
+  renderProfitTargets();
+  updateTSPreview();
+}
+function updateProfitTarget(id, field, value) {
+  const r = currentProfitTargets.find(r => r.id === id);
+  if (r) r[field] = value;
+  updateTSPreview();
+}
+function renderProfitTargets() {
+  const body = document.getElementById('f-profit-targets-body');
+  if (!body) return;
+  body.innerHTML = currentProfitTargets.map(r => `
+    <div class="ts-row">
+      <input type="number" class="ts-input" value="${r.price}" placeholder="0.00" step="0.01"
+        oninput="updateProfitTarget('${r.id}','price',this.value)">
+      <input type="number" class="ts-input ts-qty" value="${r.qty}" placeholder="0" min="0.01" step="any"
+        oninput="updateProfitTarget('${r.id}','qty',this.value)">
+      <button type="button" class="ts-del-btn" onclick="removeProfitTarget('${r.id}')">&#128465;</button>
+    </div>`).join('');
+}
+
+function addStopLoss() {
+  currentStopLoss.push({ id: uid(), price: '', qty: '' });
+  renderStopLoss();
+  updateTSPreview();
+}
+function removeStopLoss(id) {
+  currentStopLoss = currentStopLoss.filter(r => r.id !== id);
+  renderStopLoss();
+  updateTSPreview();
+}
+function updateStopLoss(id, field, value) {
+  const r = currentStopLoss.find(r => r.id === id);
+  if (r) r[field] = value;
+  updateTSPreview();
+}
+function renderStopLoss() {
+  const body = document.getElementById('f-stop-loss-body');
+  if (!body) return;
+  body.innerHTML = currentStopLoss.map(r => `
+    <div class="ts-row">
+      <input type="number" class="ts-input" value="${r.price}" placeholder="0.00" step="0.01"
+        oninput="updateStopLoss('${r.id}','price',this.value)">
+      <input type="number" class="ts-input ts-qty" value="${r.qty}" placeholder="0" min="0.01" step="any"
+        oninput="updateStopLoss('${r.id}','qty',this.value)">
+      <button type="button" class="ts-del-btn" onclick="removeStopLoss('${r.id}')">&#128465;</button>
+    </div>`).join('');
+}
+
+function updateTSPreview() {
+  const typeEl = document.getElementById('f-type');
+  if (!typeEl) return;
+  const mult = typeEl.value === 'option' ? 100 : 1;
+
+  // Weighted average entry from buy legs
+  const buyLegs     = currentLegs.filter(l => l.action === 'buy');
+  const totalBuyQty = buyLegs.reduce((s, l) => s + (parseFloat(l.quantity) || 0), 0);
+  const avgEntry    = totalBuyQty > 0
+    ? buyLegs.reduce((s, l) => s + (parseFloat(l.price) || 0) * (parseFloat(l.quantity) || 0), 0) / totalBuyQty
+    : null;
+
+  // Realized P&L via FIFO from current legs
+  let realizedPnl = 0;
+  const bq = currentLegs.filter(l => l.action === 'buy').map(l => ({
+    price: parseFloat(l.price) || 0, comm: parseFloat(l.commission) || 0,
+    fees:  parseFloat(l.fees)  || 0, totalQty: parseFloat(l.quantity) || 0,
+    remaining: parseFloat(l.quantity) || 0,
+  }));
+  for (const leg of currentLegs) {
+    if (leg.action !== 'sell') continue;
+    const sp = parseFloat(leg.price) || 0, sc = parseFloat(leg.commission) || 0,
+          sf = parseFloat(leg.fees)  || 0, sq = parseFloat(leg.quantity)   || 0;
+    if (!sq || sp < 0) continue;
+    let left = sq, rev = 0, bc = 0, bcom = 0, bfee = 0, matched = 0;
+    for (const b of bq) {
+      if (b.remaining <= 0 || left <= 0) continue;
+      const q = Math.min(b.remaining, left), ratio = b.totalQty > 0 ? q / b.totalQty : 0;
+      rev += sp * q * mult; bc += b.price * q * mult;
+      bcom += b.comm * ratio; bfee += b.fees * ratio;
+      matched += q; b.remaining -= q; left -= q;
+    }
+    if (matched > 0) {
+      const sr = sq > 0 ? matched / sq : 1;
+      realizedPnl += rev - bc - sc * sr - sf * sr - bcom - bfee;
+    }
+  }
+  realizedPnl = Math.round(realizedPnl * 100) / 100;
+
+  // Initial Target
+  let initialTarget = null;
+  if (avgEntry !== null) {
+    const pts = currentProfitTargets.filter(r => parseFloat(r.price) > 0 && parseFloat(r.qty) > 0);
+    if (pts.length)
+      initialTarget = pts.reduce((s, r) => s + ((parseFloat(r.price) || 0) - avgEntry) * (parseFloat(r.qty) || 0) * mult, 0);
+  }
+
+  // Trade Risk
+  let tradeRisk = null;
+  if (avgEntry !== null) {
+    const sls = currentStopLoss.filter(r => r.price !== '' && !isNaN(parseFloat(r.price)) && parseFloat(r.qty) > 0);
+    if (sls.length)
+      tradeRisk = sls.reduce((s, r) => s + ((parseFloat(r.price) || 0) - avgEntry) * (parseFloat(r.qty) || 0) * mult, 0);
+  }
+
+  const plannedR  = (initialTarget != null && tradeRisk != null && tradeRisk !== 0) ? initialTarget / Math.abs(tradeRisk) : null;
+  const realizedR = (tradeRisk != null && tradeRisk !== 0) ? realizedPnl / Math.abs(tradeRisk) : null;
+
+  const fmtMoney = n => n == null ? '—' : (n >= 0 ? '+$' : '-$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const setEl = (id, text, color) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.style.color = color || 'var(--text)';
+  };
+
+  const moneyColor = n => n == null ? 'var(--text-muted)' : n >= 0 ? 'var(--green)' : 'var(--red)';
+  setEl('ts-prev-target',     fmtMoney(initialTarget), moneyColor(initialTarget));
+  setEl('ts-prev-risk',       fmtMoney(tradeRisk),     moneyColor(tradeRisk));
+  setEl('ts-prev-planned-r',  plannedR  != null ? plannedR.toFixed(2)  + 'R' : '—', plannedR  != null ? 'var(--accent)' : 'var(--text-muted)');
+  setEl('ts-prev-realized-r', realizedR != null ? realizedR.toFixed(2) + 'R' : '—', realizedR != null ? moneyColor(realizedR) : 'var(--text-muted)');
+
+  const preview = document.getElementById('ts-preview');
+  if (preview) preview.style.display = (initialTarget != null || tradeRisk != null) ? '' : 'none';
+}
+
+// ─── TRADE SUMMARY CALCULATION ───
+
+function getTradeSummary(t) {
+  if (!t.legs || !t.legs.length) return {};
+  const mult     = t.type === 'option' ? 100 : 1;
+  const buyLegs  = t.legs.filter(l => l.action === 'buy');
+  const sellLegs = t.legs.filter(l => l.action === 'sell');
+
+  const totalBuyQty  = buyLegs.reduce((s, l)  => s + (parseFloat(l.quantity) || 0), 0);
+  const totalSellQty = sellLegs.reduce((s, l) => s + (parseFloat(l.quantity) || 0), 0);
+
+  const avgEntry = totalBuyQty > 0
+    ? buyLegs.reduce((s, l) => s + (parseFloat(l.price) || 0) * (parseFloat(l.quantity) || 0), 0) / totalBuyQty
+    : null;
+  const avgExit = totalSellQty > 0
+    ? sellLegs.reduce((s, l) => s + (parseFloat(l.price) || 0) * (parseFloat(l.quantity) || 0), 0) / totalSellQty
+    : null;
+
+  const entryTime = buyLegs.length  > 0 ? buyLegs[0].date                     : null;
+  const exitTime  = sellLegs.length > 0 ? sellLegs[sellLegs.length - 1].date  : null;
+
+  let initialTarget = null;
+  if (avgEntry !== null && t.profitTargets && t.profitTargets.length) {
+    initialTarget = t.profitTargets.reduce((s, pt) => {
+      return s + ((parseFloat(pt.price) || 0) - avgEntry) * (parseFloat(pt.qty) || 0) * mult;
+    }, 0);
+  }
+
+  let tradeRisk = null;
+  if (avgEntry !== null && t.stopLoss && t.stopLoss.length) {
+    tradeRisk = t.stopLoss.reduce((s, sl) => {
+      return s + ((parseFloat(sl.price) || 0) - avgEntry) * (parseFloat(sl.qty) || 0) * mult;
+    }, 0);
+  }
+
+  const plannedR = (initialTarget !== null && tradeRisk !== null && tradeRisk !== 0)
+    ? initialTarget / Math.abs(tradeRisk)
+    : null;
+  const realizedPnl = getPnl(t);
+  const realizedR   = (tradeRisk !== null && tradeRisk !== 0)
+    ? realizedPnl / Math.abs(tradeRisk)
+    : null;
+
+  return { avgEntry, avgExit, entryTime, exitTime, initialTarget, tradeRisk, plannedR, realizedR };
+}
+
+function tradeItemSummaryHtml(t) {
+  const s = getTradeSummary(t);
+
+  const fmtTime = dt => {
+    if (!dt || !dt.includes('T')) return '—';
+    const p = dt.split('T')[1];
+    return p ? p.substring(0, 5) : '—';
+  };
+  const fmtMoney = n => (n >= 0 ? '+$' : '-$') + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const clr  = n => ` style="color:${n >= 0 ? 'var(--green)' : 'var(--red)'}"`;
+  const row  = (lbl, val) => `<div class="ti-summary-row"><span class="ti-summary-label">${lbl}</span><span class="ti-summary-val">${val}</span></div>`;
+
+  // Col 2 — timing (always present when legs exist)
+  const timingHtml = !t.legs || !t.legs.length ? '' : [
+    s.avgEntry != null ? row('Avg Entry',   `$${s.avgEntry.toFixed(2)}`)  : '',
+    s.avgExit  != null ? row('Avg Exit',    `$${s.avgExit.toFixed(2)}`)   : '',
+    s.entryTime        ? row('Entry Time',  fmtTime(s.entryTime))         : '',
+    s.exitTime         ? row('Exit Time',   fmtTime(s.exitTime))          : '',
+  ].join('');
+
+  // Col 3 — targets / risk (only when profit targets or stop loss are defined)
+  const metricsHtml = [
+    s.initialTarget != null ? row('Initial Target', `<span${clr(s.initialTarget)}>${fmtMoney(s.initialTarget)}</span>`) : '',
+    s.tradeRisk     != null ? row('Trade Risk',     `<span${clr(s.tradeRisk)}>${fmtMoney(s.tradeRisk)}</span>`)         : '',
+    s.plannedR      != null ? row('Planned R',      `<span style="color:var(--accent)">${s.plannedR.toFixed(2)}R</span>`) : '',
+    s.realizedR     != null ? row('Realized R',     `<span${clr(s.realizedR)}>${s.realizedR.toFixed(2)}R</span>`)       : '',
+  ].join('');
+
+  return `<div class="ti-sum-timing">${timingHtml}</div>` +
+         `<div class="ti-sum-metrics${metricsHtml ? '' : ' ti-sum-empty'}">${metricsHtml}</div>`;
+}
+
 // ─── TRADE FORM ───
 
 function showForm(id) {
+  // Toggle: clicking the same trade's edit button again closes the form
+  if (id && id === editingId) {
+    cancelForm();
+    return;
+  }
+
   editingId = id;
   document.getElementById('form-title').textContent = id ? 'Edit Trade' : 'New Trade';
 
@@ -403,6 +626,10 @@ function showForm(id) {
     renderTagsInForm(t.tags         || []);
     renderMistakesInForm(t.mistakes || []);
     renderRulesInForm(t.rules       || []);
+    currentProfitTargets = (t.profitTargets || []).map(pt => ({ id: uid(), price: pt.price, qty: pt.qty }));
+    currentStopLoss      = (t.stopLoss      || []).map(sl => ({ id: uid(), price: sl.price, qty: sl.qty }));
+    renderProfitTargets();
+    renderStopLoss();
 
     if (t.legs && t.legs.length) {
       currentLegs = t.legs.map(l => ({
@@ -432,13 +659,36 @@ function showForm(id) {
   onTypeChange();
 
   document.getElementById('add-row-btn').style.display = 'none';
-  document.getElementById('trade-form').style.display  = 'block';
-  document.getElementById('trade-form').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  const form = document.getElementById('trade-form');
+  form.style.display = 'block';
+
+  if (id) {
+    // Place form inline directly after the trade item, keeping the summary visible
+    const tradeEl = document.querySelector(`[data-trade-id="${id}"]`);
+    if (tradeEl) {
+      // Clear highlight from any previously edited item
+      document.querySelectorAll('.trade-item.is-editing').forEach(el => el.classList.remove('is-editing'));
+      tradeEl.classList.add('is-editing');
+      tradeEl.insertAdjacentElement('afterend', form);
+    }
+  }
+
+  form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function hideForm() {
-  document.getElementById('trade-form').style.display  = 'none';
-  document.getElementById('add-row-btn').style.display = 'flex';
+  document.querySelectorAll('.trade-item.is-editing').forEach(el => el.classList.remove('is-editing'));
+
+  const form   = document.getElementById('trade-form');
+  const addBtn = document.getElementById('add-row-btn');
+  form.style.display   = 'none';
+  addBtn.style.display = 'flex';
+
+  // Return form to its original position (right after the Add button)
+  if (form.previousElementSibling !== addBtn) {
+    addBtn.insertAdjacentElement('afterend', form);
+  }
+
   editingId = null;
 }
 
@@ -457,8 +707,12 @@ function clearForm() {
   el.textContent = '—';
   el.style.color = 'var(--text-muted)';
   document.getElementById('open-pos-wrap').style.display = 'none';
-  currentLegs = [];
+  currentLegs          = [];
+  currentProfitTargets = [];
+  currentStopLoss      = [];
   renderLegsGrid();
+  renderProfitTargets();
+  renderStopLoss();
   renderTagsInForm([]);
   renderMistakesInForm([]);
   renderRulesInForm([]);
@@ -535,6 +789,8 @@ function calcPreview() {
   } else {
     openWrap.style.display = 'none';
   }
+
+  updateTSPreview();
 }
 
 function saveTrade() {
@@ -564,14 +820,20 @@ function saveTrade() {
   const tradeDate = datetimeToDateStr(legs[0].date);
 
   const trade = {
-    date:   tradeDate,
-    symbol: sym,
+    date:          tradeDate,
+    symbol:        sym,
     type,
     legs,
-    notes:    document.getElementById('f-notes').value.trim(),
-    tags:     getCheckedTagIds(),
-    mistakes: getCheckedMistakeIds(),
-    rules:    getCheckedRuleIds(),
+    notes:         document.getElementById('f-notes').value.trim(),
+    tags:          getCheckedTagIds(),
+    mistakes:      getCheckedMistakeIds(),
+    rules:         getCheckedRuleIds(),
+    profitTargets: currentProfitTargets
+      .map(r => ({ price: parseFloat(r.price) || 0, qty: parseFloat(r.qty) || 0 }))
+      .filter(r => r.price > 0 && r.qty > 0),
+    stopLoss:      currentStopLoss
+      .filter(r => r.price !== '' && !isNaN(parseFloat(r.price)) && parseFloat(r.qty) > 0)
+      .map(r => ({ price: parseFloat(r.price), qty: parseFloat(r.qty) })),
   };
 
   if (type === 'option') {

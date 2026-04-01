@@ -722,6 +722,7 @@ tbody tr:hover td { background: var(--surface2); }
 .trade-item {
   background: var(--surface2);
   border: 1px solid var(--border);
+  transition: background 0.2s, border-color 0.2s;
   border-radius: var(--radius);
   padding: 13px 16px;
   margin-bottom: 8px;
@@ -729,13 +730,17 @@ tbody tr:hover td { background: var(--surface2); }
   align-items: center;
   gap: 14px;
 }
+.trade-item.is-editing {
+  background: var(--surface3);
+  border-color: var(--accent);
+}
 .ti-sym { font-size: 15px; font-weight: 800; min-width: 70px; }
 .ti-badges { display: flex; gap: 5px; margin-top: 5px; flex-wrap: wrap; }
 .ti-detail { flex: 1; font-size: 12px; color: var(--text-muted); line-height: 1.7; }
-.ti-pnl-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.ti-pnl-wrap { width: 105px; flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .ti-pnl { font-size: 16px; font-weight: 800; text-align: right; }
 .ti-open { font-size: 11px; font-weight: 600; color: var(--accent); text-align: right; white-space: nowrap; }
-.ti-actions { display: flex; gap: 5px; }
+.ti-actions { flex-shrink: 0; display: flex; gap: 5px; }
 .icon-btn {
   width: 28px; height: 28px;
   border-radius: 6px;
@@ -2228,6 +2233,182 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 .btn-save:hover { transform: translateY(-1px); box-shadow: 0 4px 18px rgba(99,102,241,0.5); }
 .muted { color: var(--text-muted); }
+
+/* ─── PROFIT TARGETS & STOP LOSS FORM SECTION ─── */
+.targets-sl-wrap {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.targets-sl-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.targets-sl-header {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-bottom: 2px;
+}
+.targets-sl-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.ts-sl-label { color: var(--red); }
+.ts-info-icon {
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: default;
+  border: 1px solid var(--text-dim);
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+.ts-col-subhdr {
+  display: flex;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 0 2px;
+}
+.ts-col-subhdr .ts-mode-lbl { flex: 1; }
+.ts-col-subhdr .ts-qty-lbl  { width: 56px; text-align: center; }
+.ts-rows-body { display: flex; flex-direction: column; gap: 4px; }
+.ts-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ts-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+  font-size: 13px;
+  padding: 5px 8px;
+  font-family: inherit;
+  min-width: 0;
+  transition: border-color 0.15s;
+}
+.ts-input:focus { outline: none; border-color: var(--accent); }
+.ts-input.ts-qty { width: 56px; flex: none; text-align: center; }
+.ts-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 3px 5px;
+  border-radius: 4px;
+  transition: color 0.15s;
+  line-height: 1;
+  flex-shrink: 0;
+}
+.ts-del-btn:hover { color: var(--red); }
+.ts-add-btn {
+  align-self: flex-start;
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 15px;
+  font-weight: 700;
+  padding: 2px 10px;
+  margin-top: 2px;
+  transition: all 0.15s;
+  font-family: inherit;
+}
+.ts-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ─── LIVE TARGET / RISK PREVIEW IN FORM ─── */
+.ts-preview {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-top: 10px;
+}
+.ts-prev-item {
+  background: var(--surface);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.ts-prev-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+.ts-prev-val {
+  font-size: 16px;
+  font-weight: 800;
+}
+
+/* ─── TRADE ITEM SUMMARY COLUMNS ─── */
+/* Col 2: timing — avg entry/exit + times */
+.ti-sum-timing {
+  width: 148px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  justify-content: center;
+}
+/* Col 3: metrics — targets / risk / R-multiples */
+.ti-sum-metrics {
+  width: 188px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  align-self: stretch;
+  justify-content: center;
+}
+.ti-sum-metrics.ti-sum-empty {
+  background: transparent;
+  border-color: transparent;
+}
+.ti-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+}
+.ti-summary-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.ti-summary-val {
+  font-size: 11px;
+  font-weight: 700;
+  text-align: right;
+  white-space: nowrap;
+}
 
 @media (max-width: 768px) {
   .plan-header-bar { padding: 8px 14px; gap: 8px; flex-wrap: wrap; }

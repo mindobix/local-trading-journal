@@ -231,7 +231,7 @@ function closeImportErrors() {
 
 function backupData() {
   const backup = {
-    version:    3,
+    version:    4,  // v4: trades include profitTargets and stopLoss arrays
     exportedAt: new Date().toISOString(),
     trades:   load(),
     tags:     loadTags(),
