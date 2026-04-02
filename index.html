@@ -18,13 +18,52 @@
     <button class="nav-btn" id="nav-reports" onclick="switchView('reports')">Reports</button>
   </nav>
   <div class="header-spacer"></div>
-  <button class="header-util-btn csv-dl-btn" onclick="downloadCSVTemplate()" title="Download a CSV template with example trades">&#8681; CSV Template</button>
-  <button class="header-util-btn csv-ul-btn" onclick="document.getElementById('csv-import-input').click()" title="Import trades from a CSV file">&#8679; Import CSV</button>
+  <div class="util-dropdown" id="util-dropdown">
+    <button class="header-util-btn util-dropdown-toggle" onclick="toggleUtilDropdown(event)" title="Data tools">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4.03 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4.03 3 9 3s9-1.34 9-3"/></svg>
+      Data
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-left:2px" class="util-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="util-dropdown-menu" id="util-dropdown-menu">
+      <button class="util-dropdown-item csv-dl-btn" onclick="downloadCSVTemplate(); closeUtilDropdown()" title="Download a CSV template with example trades">
+        <span class="di-icon">&#8681;</span> CSV Template
+      </button>
+      <button class="util-dropdown-item csv-ul-btn" onclick="document.getElementById('csv-import-input').click(); closeUtilDropdown()" title="Import trades from a CSV file">
+        <span class="di-icon">&#8679;</span> Import CSV
+      </button>
+      <div class="util-dropdown-divider"></div>
+      <button class="util-dropdown-item backup-btn" onclick="backupData(); closeUtilDropdown()" title="Download a backup of all your trades">
+        <span class="di-icon">&#128190;</span> Backup Data
+      </button>
+      <button class="util-dropdown-item restore-btn" onclick="document.getElementById('restore-input').click(); closeUtilDropdown()" title="Restore trades from a backup file">
+        <span class="di-icon">&#8635;</span> Restore Data
+      </button>
+    </div>
+  </div>
   <input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSVTrades(event)">
-  <button class="header-util-btn backup-btn" onclick="backupData()" title="Download a backup of all your trades">&#8681; Backup</button>
-  <button class="header-util-btn restore-btn" onclick="document.getElementById('restore-input').click()" title="Restore trades from a backup file">&#8679; Restore</button>
   <input type="file" id="restore-input" accept=".json" style="display:none" onchange="restoreData(event)">
-  <button class="header-add-btn" onclick="openAddGlobal()">+ Add Trade</button>
+  <div class="add-dropdown" id="add-dropdown">
+    <button class="header-add-btn add-dropdown-toggle" onclick="toggleAddDropdown(event)">
+      + Trade Entry
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-left:2px" class="add-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <div class="add-dropdown-menu" id="add-dropdown-menu">
+      <button class="add-dropdown-item" onclick="openAddGlobal(); closeAddDropdown()">
+        <span class="adi-icon">+</span>
+        <div class="adi-content">
+          <div class="adi-label">Add Trade</div>
+          <div class="adi-desc">Single trade entry form</div>
+        </div>
+      </button>
+      <button class="add-dropdown-item" onclick="openBulkTradesView(); closeAddDropdown()">
+        <span class="adi-icon">&#9783;</span>
+        <div class="adi-content">
+          <div class="adi-label">Bulk Trades</div>
+          <div class="adi-desc">Enter multiple trades in a grid</div>
+        </div>
+      </button>
+    </div>
+  </div>
 </header>
 
 <!-- ─── STATS BAR ─── -->
@@ -169,6 +208,52 @@
     </div>
   </div>
 
+</div>
+
+<!-- ─── BULK TRADE ENTRY VIEW ─── -->
+<div id="view-bulk" class="bulk-view" style="display:none">
+  <div class="bulk-topbar">
+    <div class="bulk-topbar-left">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);flex-shrink:0"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+      <span class="bulk-view-title">Bulk Trade Entry</span>
+      <span class="bulk-count-label" id="bulk-count-label"></span>
+    </div>
+    <div class="bulk-topbar-actions">
+      <button class="bulk-act-btn" onclick="addBulkRow(1)">+ Add a Row</button>
+      <button class="bulk-act-btn" onclick="addBulkRow(2)">+ Add 2 Rows</button>
+      <button class="bulk-act-btn bulk-new-trade-btn" onclick="addNewBulkTrade()">+ New Trade</button>
+      <div class="bulk-tb-divider"></div>
+      <button class="bulk-save-btn" onclick="saveBulkTrades()">&#10003; Save Trades</button>
+      <button class="bulk-close-btn" onclick="closeBulkView()" title="Close">&#10005;</button>
+    </div>
+  </div>
+  <div class="bulk-msg-panel" id="bulk-msg-panel" style="display:none"></div>
+  <div class="bulk-grid-outer">
+    <table class="bulk-grid">
+      <thead>
+        <tr>
+          <th class="col-del"></th>
+          <th class="col-tid">Trade</th>
+          <th class="col-sym">Symbol <span class="col-req">*</span></th>
+          <th class="col-type">Type <span class="col-req">*</span></th>
+          <th class="col-opttype">Opt Type</th>
+          <th class="col-strike">Strike</th>
+          <th class="col-expiry">Expiry</th>
+          <th class="col-action">Action <span class="col-req">*</span></th>
+          <th class="col-dt">Date &amp; Time <span class="col-req">*</span></th>
+          <th class="col-price">Price <span class="col-req">*</span></th>
+          <th class="col-qty">Qty <span class="col-req">*</span></th>
+          <th class="col-comm">Comm</th>
+          <th class="col-fees">Fees</th>
+          <th class="col-tags">Tags</th>
+          <th class="col-mistakes">Mistakes</th>
+          <th class="col-rules">Rules</th>
+          <th class="col-notes">Notes</th>
+        </tr>
+      </thead>
+      <tbody id="bulk-tbody"></tbody>
+    </table>
+  </div>
 </div>
 
 <!-- ─── DAY MODAL ─── -->
@@ -509,6 +594,7 @@
 <script src="js/trades.js"></script>
 <script src="js/modal.js"></script>
 <script src="js/reports.js"></script>
+<script src="js/bulk.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>

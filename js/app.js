@@ -1,7 +1,44 @@
 const state = { view: 'calendar', tradesVisited: false };
 
+function toggleUtilDropdown(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('util-dropdown-menu');
+  const btn = e.currentTarget;
+  const isOpen = menu.classList.toggle('open');
+  btn.classList.toggle('active', isOpen);
+}
+function closeUtilDropdown() {
+  document.getElementById('util-dropdown-menu').classList.remove('open');
+  const btn = document.querySelector('.util-dropdown-toggle');
+  if (btn) btn.classList.remove('active');
+}
+document.addEventListener('click', function(e) {
+  const dd = document.getElementById('util-dropdown');
+  if (dd && !dd.contains(e.target)) closeUtilDropdown();
+});
+
+function toggleAddDropdown(e) {
+  e.stopPropagation();
+  const menu = document.getElementById('add-dropdown-menu');
+  const btn = e.currentTarget;
+  const isOpen = menu.classList.toggle('open');
+  btn.classList.toggle('active', isOpen);
+}
+function closeAddDropdown() {
+  document.getElementById('add-dropdown-menu').classList.remove('open');
+  const btn = document.querySelector('.add-dropdown-toggle');
+  if (btn) btn.classList.remove('active');
+}
+document.addEventListener('click', function(e) {
+  const dd = document.getElementById('add-dropdown');
+  if (dd && !dd.contains(e.target)) closeAddDropdown();
+});
+
 function switchView(v) {
+  if (typeof _bulkIsActive === 'function' && _bulkIsActive() && !_bulkConfirmLeave()) return;
+  if (typeof _bulkCleanup === 'function') _bulkCleanup();
   state.view = v;
+  document.getElementById('view-bulk').style.display    = 'none';
   document.getElementById('view-cal').style.display     = v === 'calendar' ? 'block' : 'none';
   document.getElementById('view-trades').style.display  = v === 'trades'   ? 'block' : 'none';
   document.getElementById('view-plan').style.display    = v === 'plan'     ? 'block' : 'none';
@@ -402,9 +439,13 @@ document.getElementById('import-error-overlay').addEventListener('click', functi
   if (e.target === this) closeImportErrors();
 });
 
-// Escape key closes modal
+// Escape key closes modal / bulk view
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    if (typeof _bulkIsActive === 'function' && _bulkIsActive()) {
+      closeBulkView();
+      return;
+    }
     closeModal();
     closeImportErrors();
   }
