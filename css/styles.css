@@ -854,7 +854,7 @@ tbody tr:hover td { background: var(--surface2); }
 
 .legs-grid-header {
   display: grid;
-  grid-template-columns: 82px 178px 80px 62px 82px 78px 75px 82px 76px 28px;
+  grid-template-columns: 82px 178px 96px 62px 82px 78px 75px 82px 76px 28px;
   gap: 5px;
   padding: 0 2px 5px;
 }
@@ -873,7 +873,7 @@ tbody tr:hover td { background: var(--surface2); }
 }
 .leg-row {
   display: grid;
-  grid-template-columns: 82px 178px 80px 62px 82px 78px 75px 82px 76px 28px;
+  grid-template-columns: 82px 178px 96px 62px 82px 78px 75px 82px 76px 28px;
   gap: 5px;
   margin-bottom: 5px;
   align-items: center;

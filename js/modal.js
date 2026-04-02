@@ -39,7 +39,7 @@ function refreshWeekModal() {
   document.getElementById('day-summary').innerHTML = `
     <div class="ds-card">
       <div class="ds-label">Week P&amp;L</div>
-      <div class="ds-value ${pnlCls}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+      <div class="ds-value ${pnlCls}">${pnl < 0 ? '-' : ''}$${Math.abs(pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
     </div>
     <div class="ds-card">
       <div class="ds-label">Trades</div>
@@ -199,7 +199,7 @@ function refreshDayModal() {
   document.getElementById('day-summary').innerHTML = `
     <div class="ds-card">
       <div class="ds-label">Day P&amp;L</div>
-      <div class="ds-value ${pnlCls}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
+      <div class="ds-value ${pnlCls}">${pnl < 0 ? '-' : ''}$${Math.abs(pnl).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2})}</div>
     </div>
     <div class="ds-card">
       <div class="ds-label">Trades</div>
@@ -372,13 +372,13 @@ function renderLegsGrid() {
       </select>
       <input type="datetime-local" class="leg-field" value="${leg.date}"
         onchange="updateLeg('${leg.id}','date',this.value)">
-      <input type="number" class="leg-field" value="${leg.price}" placeholder="0.00" step="0.01"
+      <input type="number" class="leg-field" value="${leg.price}" placeholder="0.00" min="0" step="0.01"
         oninput="updateLeg('${leg.id}','price',this.value)">
       <input type="number" class="leg-field" value="${leg.quantity}" placeholder="0" min="0.01" step="any"
         oninput="updateLeg('${leg.id}','quantity',this.value)">
-      <input type="number" class="leg-field" value="${leg.commission}" placeholder="0.00" step="0.01"
+      <input type="number" class="leg-field" value="${leg.commission}" placeholder="0.00" min="0" step="0.01"
         oninput="updateLeg('${leg.id}','commission',this.value)">
-      <input type="number" class="leg-field" value="${leg.fees}" placeholder="0.00" step="0.01"
+      <input type="number" class="leg-field" value="${leg.fees}" placeholder="0.00" min="0" step="0.01"
         oninput="updateLeg('${leg.id}','fees',this.value)">
       <div class="leg-calc-cell" id="lc-cost-${leg.id}">${adjCostHtml}</div>
       <div class="leg-calc-cell" id="lc-proc-${leg.id}">${adjProceedHtml}</div>

@@ -305,26 +305,32 @@ function restoreData(event) {
     const addedTrades = incoming.trades.length - updatedTrades;
     const mergedTrades = [...existingTradeMap.values()];
 
-    // Merge tags — existing wins on ID conflict
-    const existingTagIds = new Set(existingTags.map(t => t.id));
-    const mergedTags = [
-      ...existingTags,
-      ...(incoming.tags || []).filter(t => !existingTagIds.has(t.id)),
-    ];
+    // Merge tags — incoming wins on ID conflict (backup updates override local)
+    const existingTagMap = new Map(existingTags.map(t => [t.id, t]));
+    let updatedTags = 0;
+    for (const t of (incoming.tags || [])) {
+      if (existingTagMap.has(t.id)) updatedTags++;
+      existingTagMap.set(t.id, t);
+    }
+    const mergedTags = [...existingTagMap.values()];
 
-    // Merge mistakes — existing wins on ID conflict
-    const existingMistakeIds = new Set(existingMistakes.map(m => m.id));
-    const mergedMistakes = [
-      ...existingMistakes,
-      ...(incoming.mistakes || []).filter(m => !existingMistakeIds.has(m.id)),
-    ];
+    // Merge mistakes — incoming wins on ID conflict (backup updates override local)
+    const existingMistakeMap = new Map(existingMistakes.map(m => [m.id, m]));
+    let updatedMistakes = 0;
+    for (const m of (incoming.mistakes || [])) {
+      if (existingMistakeMap.has(m.id)) updatedMistakes++;
+      existingMistakeMap.set(m.id, m);
+    }
+    const mergedMistakes = [...existingMistakeMap.values()];
 
-    // Merge rules — existing wins on ID conflict
-    const existingRuleIds = new Set(existingRules.map(r => r.id));
-    const mergedRules = [
-      ...existingRules,
-      ...(incoming.rules || []).filter(r => !existingRuleIds.has(r.id)),
-    ];
+    // Merge rules — incoming wins on ID conflict (backup updates override local)
+    const existingRuleMap = new Map(existingRules.map(r => [r.id, r]));
+    let updatedRules = 0;
+    for (const r of (incoming.rules || [])) {
+      if (existingRuleMap.has(r.id)) updatedRules++;
+      existingRuleMap.set(r.id, r);
+    }
+    const mergedRules = [...existingRuleMap.values()];
 
     // Merge plans — incoming wins on date conflict (backup plans override local)
     const incomingPlans = incoming.plans || {};
@@ -362,11 +368,14 @@ function restoreData(event) {
     const addedRules    = mergedRules.length    - existingRules.length;
 
     const parts = [];
-    if (addedTrades   > 0) parts.push(`${addedTrades} trade${addedTrades !== 1 ? 's' : ''} added`);
-    if (updatedTrades > 0) parts.push(`${updatedTrades} trade${updatedTrades !== 1 ? 's' : ''} updated`);
-    if (addedTags     > 0) parts.push(`${addedTags} tag${addedTags !== 1 ? 's' : ''} added`);
-    if (addedMistakes > 0) parts.push(`${addedMistakes} mistake${addedMistakes !== 1 ? 's' : ''} added`);
-    if (addedRules    > 0) parts.push(`${addedRules} rule${addedRules !== 1 ? 's' : ''} added`);
+    if (addedTrades    > 0) parts.push(`${addedTrades} trade${addedTrades !== 1 ? 's' : ''} added`);
+    if (updatedTrades  > 0) parts.push(`${updatedTrades} trade${updatedTrades !== 1 ? 's' : ''} updated`);
+    if (addedTags      > 0) parts.push(`${addedTags} tag${addedTags !== 1 ? 's' : ''} added`);
+    if (updatedTags    > 0) parts.push(`${updatedTags} tag${updatedTags !== 1 ? 's' : ''} updated`);
+    if (addedMistakes  > 0) parts.push(`${addedMistakes} mistake${addedMistakes !== 1 ? 's' : ''} added`);
+    if (updatedMistakes > 0) parts.push(`${updatedMistakes} mistake${updatedMistakes !== 1 ? 's' : ''} updated`);
+    if (addedRules     > 0) parts.push(`${addedRules} rule${addedRules !== 1 ? 's' : ''} added`);
+    if (updatedRules   > 0) parts.push(`${updatedRules} rule${updatedRules !== 1 ? 's' : ''} updated`);
     if (addedPlans    > 0) parts.push(`${addedPlans} daily plan${addedPlans !== 1 ? 's' : ''} added`);
     if (updatedPlans  > 0) parts.push(`${updatedPlans} daily plan${updatedPlans !== 1 ? 's' : ''} updated`);
     if (addedIdeas    > 0) parts.push(`${addedIdeas} trade plan idea${addedIdeas !== 1 ? 's' : ''} added`);
