@@ -50,39 +50,33 @@ const _news = {
   config:           null,
   lastUpdated:      null,
   activeSymbol:     'MARKET',
-  activeTimeFilter: '1d',
   serverOnline:     false,
   pollTimer:        null,
   crawling:         false,
   editingId:        null,
   addingFeedFor:    null,
   activeArticleId:  null,
-  report:           null,       // latest report for activeSymbol
-  reportGenerating: false,
-  reportsAvailable: new Set(),  // symbols that have a cached report on the server
+  report:           null,         // latest report for activeSymbol
+  reportsAvailable: new Set(),   // symbols with a completed report
+  reportsRunning:   new Set(),   // symbols whose report worker is currently running
+  reportSignalMap:  new Map(),   // articleId → topSignal entry for active symbol's report
+  statusPollTimer:  null,
   taxonomy:         null,
 };
 
-const _TIME_FILTERS = [
-  { key: '1h',  label: '< 1 Hr',   ms: 3_600_000  },
-  { key: '4h',  label: '< 4 Hrs',  ms: 14_400_000 },
-  { key: '8h',  label: '< 8 Hrs',  ms: 28_800_000 },
-  { key: '12h', label: '< 12 Hrs', ms: 43_200_000 },
-  { key: '1d',  label: '1 Day',    ms: 86_400_000 },
-];
 
 // ─── PUBLIC: called from switchView('news') ───────────────────────────────────
 async function initNewsView() {
   renderNewsShell();
-  _renderTimeTabs();
   await Promise.all([loadNewsConfig(), loadNews(), _loadTaxonomy()]);
   _loadReport(_news.activeSymbol);
-  _prefetchReportStatus();   // background — lights up dots as reports are found
+  _startStatusPoll();
   _startNewsPoll();
 }
 
 function cleanupNewsView() {
-  if (_news.pollTimer) { clearInterval(_news.pollTimer); _news.pollTimer = null; }
+  if (_news.pollTimer)       { clearInterval(_news.pollTimer);       _news.pollTimer       = null; }
+  if (_news.statusPollTimer) { clearInterval(_news.statusPollTimer); _news.statusPollTimer = null; }
 }
 
 // ─── POLLING ─────────────────────────────────────────────────────────────────
@@ -108,56 +102,78 @@ async function _loadTaxonomy() {
 
 // ─── REPORT ──────────────────────────────────────────────────────────────────
 async function _loadReport(symbol) {
-  if (!symbol) { _news.report = null; _renderReportPanel(); return; }
+  if (!symbol) { _news.report = null; _updateReportSignalMap(); _renderReportPanel(); return; }
   try {
     const r = await fetch(`${NEWS_API}/news/report/${encodeURIComponent(symbol)}`);
     _news.report = r.ok ? await r.json() : null;
   } catch {
     _news.report = null;
   }
+  _updateReportSignalMap();
   if (_news.report) {
     _news.reportsAvailable.add(symbol);
     _renderSymbolTabs();
+    _renderFeed();   // refresh cards so signal pills appear immediately
   }
   _renderReportPanel();
 }
 
-// Silently check every visible tab for an existing report and light up its dot.
-async function _prefetchReportStatus() {
-  const userSyms = (_news.config?.symbols || []).filter(s => !PINNED_SYMS.includes(s));
-  const allSyms  = [...PINNED_SYMS, ...userSyms];
-  await Promise.all(allSyms.map(async sym => {
-    try {
-      const r = await fetch(`${NEWS_API}/news/report/${encodeURIComponent(sym)}`);
-      if (r.ok) {
-        const data = await r.json();
-        if (data && data.clusters) _news.reportsAvailable.add(sym);
-      }
-    } catch { /* silent */ }
-  }));
-  _renderSymbolTabs();
+// Build a fast lookup Map from articleId → topSignal entry for the active report.
+function _updateReportSignalMap() {
+  const signals = _news.report?.topSignals || [];
+  _news.reportSignalMap = new Map(signals.map(s => [s.id, s]));
 }
 
-async function triggerReport() {
-  const sym = _news.activeSymbol;
-  if (!sym || _news.reportGenerating) return;
-  _news.reportGenerating = true;
-  _renderReportPanel();
+// ─── CONTINUOUS REPORT STATUS POLL ───────────────────────────────────────────
+// Polls /api/news/reports/status every 3 s.
+// • running → blinking yellow dot on tab
+// • done    → solid green dot; auto-loads report if it's the active symbol
+// This replaces the old manual triggerReport / _prefetchReportStatus flow.
+
+const STATUS_POLL_MS = 3000;
+
+function _startStatusPoll() {
+  if (_news.statusPollTimer) clearInterval(_news.statusPollTimer);
+  _checkReportStatuses();   // immediate first check
+  _news.statusPollTimer = setInterval(_checkReportStatuses, STATUS_POLL_MS);
+}
+
+async function _checkReportStatuses() {
+  // Guard: don't run if the News view is hidden
+  const view = document.getElementById('view-news');
+  if (!view || view.style.display === 'none') return;
+
   try {
-    const tf = _TIME_FILTERS.find(f => f.key === _news.activeTimeFilter);
-    const window = tf?.ms || 86400000;
-    const r = await fetch(`${NEWS_API}/news/report/${encodeURIComponent(sym)}?window=${window}`, { method: 'POST' });
-    if (r.ok) {
-      const data = await r.json();
-      _news.report = data.report;
-      if (_news.report) {
+    const r = await fetch(`${NEWS_API}/news/reports/status`);
+    if (!r.ok) return;
+    const statuses = await r.json();   // { TSLA: { status }, SPY: { status }, … }
+
+    let tabsChanged = false;
+
+    for (const [sym, { status }] of Object.entries(statuses)) {
+      const wasRunning = _news.reportsRunning.has(sym);
+      const hadReport  = _news.reportsAvailable.has(sym);
+
+      if (status === 'running') {
+        if (!wasRunning) { _news.reportsRunning.add(sym); tabsChanged = true; }
+
+      } else if (status === 'done') {
+        const justFinished = wasRunning || !hadReport;
+        _news.reportsRunning.delete(sym);
         _news.reportsAvailable.add(sym);
-        _renderSymbolTabs();
+        if (justFinished) {
+          tabsChanged = true;
+          // Auto-reload report + signal pills if this is the active tab
+          if (sym === _news.activeSymbol) await _loadReport(sym);
+        }
+
+      } else if (status === 'error') {
+        if (wasRunning) { _news.reportsRunning.delete(sym); tabsChanged = true; }
       }
     }
-  } catch { /* silent */ }
-  _news.reportGenerating = false;
-  _renderReportPanel();
+
+    if (tabsChanged) _renderSymbolTabs();
+  } catch { /* server offline — silent */ }
 }
 
 function _renderReportPanel() {
@@ -174,20 +190,22 @@ function _renderReportPanel() {
 
   body?.classList.add('signal-visible');
 
-  if (_news.reportGenerating) {
-    el.innerHTML = `<div class="nrp-wrap nrp-loading">
-      <span class="nrp-spinner"></span>
-      <div>Generating signal report for <strong>${_esc(sym)}</strong>…</div>
-    </div>`;
-    return;
-  }
+  const isRunning = _news.reportsRunning.has(sym);
+  const report    = _news.report;
 
-  const report = _news.report;
+  // Show stale report content while a fresh one is generating (if we have one),
+  // or a minimal loading strip if there's nothing yet.
+  const loadingBanner = isRunning ? `
+    <div class="nrp-live-banner">
+      <span class="nrp-spinner"></span> Analysing new articles…
+    </div>` : '';
+
   if (!report) {
     el.innerHTML = `<div class="nrp-wrap nrp-empty">
       <div class="nrp-empty-icon">📊</div>
-      <div class="nrp-label">No report yet for <strong>${_esc(sym)}</strong></div>
-      <button class="nrp-gen-btn nrp-gen-btn-lg" onclick="triggerReport()">Generate Signal Report</button>
+      <div class="nrp-label">Waiting for articles…</div>
+      <div class="nrp-empty-sub">Signal analysis runs automatically when new articles arrive${isRunning ? ' — running now' : ''}.</div>
+      ${isRunning ? `<div class="nrp-loading-row"><span class="nrp-spinner"></span> Analysing…</div>` : ''}
     </div>`;
     return;
   }
@@ -216,10 +234,11 @@ function _renderReportPanel() {
 
   el.innerHTML = `
     <div class="nrp-wrap">
+      ${loadingBanner}
       <div class="nrp-hdr-row">
         <span class="nrp-sym-badge" style="background:${_symColor(sym)}">${_esc(sym)}</span>
         <span class="nrp-title">Signal Report</span>
-        <button class="nrp-gen-btn" onclick="triggerReport()" title="Regenerate">↻</button>
+        <span class="nrp-age">${_esc(age)}</span>
       </div>
       <div class="nrp-sentiment-block ${sentimentClass}">
         <span class="nrp-sent-icon">${sentimentIcon}</span>
@@ -230,7 +249,6 @@ function _renderReportPanel() {
         <div class="nrp-stat"><span class="nrp-stat-val">${report.noiseCount ?? 0}</span><span class="nrp-stat-lbl">noise</span></div>
         <div class="nrp-stat"><span class="nrp-stat-val">${report.clusters?.length ?? 0}</span><span class="nrp-stat-lbl">stories</span></div>
       </div>
-      <div class="nrp-age-row">Updated ${_esc(age)}</div>
       <div class="nrp-stories">
         ${storiesHTML || '<div class="nrp-no-stories">No high-signal articles in this window.</div>'}
       </div>
@@ -250,7 +268,6 @@ async function loadNewsConfig() {
       || { configVersion: CLIENT_CONFIG_VERSION, symbols: ['TSLA','SPY','QQQ','MU','META'], sources: [...CLIENT_DEFAULT_SOURCES_V2] };
   }
   _renderSymbolTabs();
-  _renderTimeTabs();
 }
 
 async function loadNews() {
@@ -315,7 +332,6 @@ function renderNewsShell() {
           <button class="news-icon-btn" onclick="openNewsSettings()" title="Configure sources">${_gearSvg()}</button>
         </div>
       </div>
-      <div class="news-time-bar" id="news-time-bar"></div>
       <div class="news-body" id="news-body">
         <div class="news-signal-col" id="news-report-panel"></div>
         <div class="news-feed-col">
@@ -348,8 +364,11 @@ function _renderSymbolTabs() {
   const userSyms = (_news.config?.symbols || []).filter(s => !PINNED_SYMS.includes(s));
   const syms = [...PINNED_SYMS, ...userSyms];
   el.innerHTML = syms.map(s => {
+    const isRunning = _news.reportsRunning.has(s);
     const hasReport = _news.reportsAvailable.has(s);
-    const dot = hasReport ? '<span class="nst-dot"></span>' : '';
+    const dot = isRunning ? '<span class="nst-dot nst-dot-running"></span>'
+              : hasReport ? '<span class="nst-dot"></span>'
+              : '';
     return `<button class="news-sym-tab${s === _news.activeSymbol ? ' active' : ''}"
              onclick="_switchNewsSymbol('${_esc(s)}')">${dot}${_esc(s)}</button>`;
   }).join('');
@@ -363,40 +382,15 @@ function _switchNewsSymbol(sym) {
   _loadReport(sym);
 }
 
-// ─── TIME-FILTER TABS ─────────────────────────────────────────────────────────
-function _renderTimeTabs() {
-  const el = document.getElementById('news-time-bar');
-  if (!el) return;
-  el.innerHTML = _TIME_FILTERS.map(f => {
-    const active = f.key === _news.activeTimeFilter;
-    return `<button class="news-time-tab${active ? ' active' : ''}"
-                    onclick="_switchTimeFilter('${f.key}')">${_esc(f.label)}</button>`;
-  }).join('');
-}
-
-function _switchTimeFilter(key) {
-  _news.activeTimeFilter = key;
-  _renderTimeTabs();
-  _renderFeed();   // purely client-side filter — no server round-trip needed
-}
 
 // ─── FEED ─────────────────────────────────────────────────────────────────────
 function _renderFeed() {
   const wrap = document.getElementById('news-feed-wrap');
   if (!wrap) return;
 
-  // 1. Symbol filter
-  let articles = _news.articles.filter(a => a.symbol === _news.activeSymbol);
-
-  // 2. Time filter
-  const tf = _TIME_FILTERS.find(f => f.key === _news.activeTimeFilter);
-  if (tf?.ms) {
-    const cutoff = Date.now() - tf.ms;
-    articles = articles.filter(a => new Date(a.publishedAt).getTime() >= cutoff);
-  }
+  const articles = _news.articles.filter(a => a.symbol === _news.activeSymbol);
 
   if (articles.length === 0) {
-    const tfLabel = _TIME_FILTERS.find(f => f.key === _news.activeTimeFilter)?.label || '';
     wrap.classList.remove('nws-split-active');
     wrap.innerHTML = `
       <div class="news-state-msg">
@@ -404,7 +398,7 @@ function _renderFeed() {
         <div class="nsm-title">No articles found</div>
         <div class="nsm-sub">
           ${_news.serverOnline
-            ? `No articles in the <strong>${_esc(tfLabel)}</strong> window. Try a wider time filter or click Refresh.`
+            ? 'No articles yet. Click Refresh to crawl now.'
             : 'Cannot reach the news crawler. Start the server first.'}
         </div>
       </div>`;
@@ -448,8 +442,12 @@ function _articleCard(a) {
   const isToday = _isToday(a.publishedAt);
   const bg      = _symColor(a.symbol);
   const safeId  = _esc(a.id);
+  const signal  = _news.reportSignalMap.get(a.id);
+  const signalPill = signal
+    ? `<span class="nc-signal-pill" title="${_esc(signal.matchedSignal || '')}">${_esc(signal.matchedCategory || 'Signal')} &middot; ${Math.round(signal.score * 100)}%</span>`
+    : '';
 
-  return `<article class="news-card" data-id="${safeId}" onclick="_openArticle('${safeId}')">
+  return `<article class="news-card${signal ? ' nc-is-signal' : ''}" data-id="${safeId}" onclick="_openArticle('${safeId}')">
     <div class="nc-meta">
       <span class="nc-sym" style="background:${bg}">${_esc(a.symbol)}</span>
       <span class="nc-src">${_esc(a.source)}</span>
@@ -457,6 +455,7 @@ function _articleCard(a) {
     </div>
     <div class="nc-title">${_esc(a.title)}</div>
     ${a.description ? `<div class="nc-desc">${_esc(a.description)}</div>` : ''}
+    ${signalPill}
   </article>`;
 }
 

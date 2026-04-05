@@ -2962,6 +2962,17 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
 }
 .news-sym-tab.active .nst-dot { background: rgba(255,255,255,0.85); }
 
+/* Running: amber + blink */
+.nst-dot-running {
+  background: #f59e0b;
+  animation: nst-blink 0.9s ease-in-out infinite;
+}
+.news-sym-tab.active .nst-dot-running { background: rgba(255,220,100,0.9); }
+@keyframes nst-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.15; }
+}
+
 .news-topbar-right {
   display: flex;
   align-items: center;
@@ -2969,51 +2980,6 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   flex-shrink: 0;
 }
 
-/* ── Time-filter sub-bar ── */
-.news-time-bar {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  padding: 5px 20px;
-  background: var(--bg);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.news-time-tab {
-  padding: 3px 11px;
-  border-radius: 20px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 600;
-  font-family: inherit;
-  letter-spacing: 0.02em;
-  transition: all 0.13s;
-  white-space: nowrap;
-}
-.news-time-tab:hover  { color: var(--text-muted); background: var(--surface2); }
-.news-time-tab.active {
-  color: var(--accent);
-  background: var(--accent-dim);
-  border-color: rgba(99,102,241,0.3);
-}
-.news-clear-tf-btn {
-  display: inline-block;
-  margin-top: 8px;
-  padding: 5px 14px;
-  background: var(--surface2);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  cursor: pointer;
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.13s;
-}
-.news-clear-tf-btn:hover { border-color: var(--accent); color: var(--accent); }
 
 .news-status-dot {
   width: 7px;
@@ -3130,6 +3096,40 @@ input[type="date"]::-webkit-calendar-picker-indicator:hover {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/* ── Signal pill on article cards ── */
+.nc-signal-pill {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  background: rgba(16,185,129,0.12);
+  color: #059669;
+  border: 1px solid rgba(16,185,129,0.25);
+}
+/* Subtle left-border accent on signal cards */
+.news-card.nc-is-signal {
+  border-left: 3px solid rgba(16,185,129,0.55);
+}
+.news-card.nc-is-signal.active {
+  border-left-color: var(--accent);
+}
+
+/* ── Live-analysis banner inside report panel ── */
+.nrp-live-banner {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 11px; color: #f59e0b; font-weight: 600;
+  padding: 6px 10px; margin-bottom: 10px;
+  background: rgba(245,158,11,0.08);
+  border: 1px solid rgba(245,158,11,0.2);
+  border-radius: 6px;
+}
+.nrp-empty-sub  { font-size: 11px; color: var(--text-dim); text-align: center; }
+.nrp-loading-row { display: flex; align-items: center; gap: 8px; color: #f59e0b;
+                   font-size: 11px; font-weight: 600; margin-top: 8px; }
 
 /* ── State messages (loading / empty / offline) ── */
 .news-state-msg {
@@ -3785,6 +3785,7 @@ input:checked ~ .nws-toggle-track .nws-toggle-thumb { background: #fff; transfor
 .nrp-stat-lbl { display: block; font-size: 10px; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.05em; }
 
 .nrp-age-row { font-size: 10px; color: var(--text-dim); margin-bottom: 12px; text-align: right; }
+.nrp-age     { font-size: 10px; color: var(--text-dim); margin-left: auto; }
 
 /* Stories list */
 .nrp-stories { flex: 1; overflow-y: auto; min-height: 0; }

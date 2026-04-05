@@ -22,8 +22,49 @@ const { Readability }  = require('@mozilla/readability');
 const LARGE_HEADER_SIZE = 64 * 1024; // 64 KB
 const httpAgent  = new http.Agent ({ maxHeaderSize: LARGE_HEADER_SIZE, keepAlive: false });
 const httpsAgent = new https.Agent({ maxHeaderSize: LARGE_HEADER_SIZE, keepAlive: false });
+const { fork }            = require('child_process');
 const { crawlAllSources } = require('./crawlers/index');
-const { generateReport, generateAllReports, loadTaxonomy, saveTaxonomy } = require('./report-gen');
+
+
+const REPORT_WORKER_PATH = path.join(__dirname, 'report-worker.js');
+
+// ─── In-memory report job tracker ────────────────────────────────────────────
+// Keyed by symbol. status: 'running' | 'done' | 'error'
+const _reportJobs = new Map();
+
+function _runReportWorker(symbol, windowMs) {
+  return new Promise(resolve => {
+    if (_reportJobs.get(symbol)?.status === 'running') { resolve(); return; }
+
+    _reportJobs.set(symbol, { status: 'running' });
+    const child = fork(REPORT_WORKER_PATH, [symbol, String(windowMs)]);
+
+    child.on('message', msg => {
+      if (msg.ok) {
+        _reportJobs.set(symbol, { status: 'done', report: msg.report });
+        console.log(`[Report Worker] ${symbol} done.`);
+      } else {
+        _reportJobs.set(symbol, { status: 'error', error: msg.error });
+        console.error(`[Report Worker] ${symbol} failed:`, msg.error);
+      }
+      resolve();
+    });
+
+    child.on('error', err => {
+      _reportJobs.set(symbol, { status: 'error', error: err.message });
+      console.error(`[Report Worker] ${symbol} fork error:`, err.message);
+      resolve();
+    });
+
+    // Catch crashes that exit before sending a message
+    child.on('exit', code => {
+      if (_reportJobs.get(symbol)?.status === 'running') {
+        _reportJobs.set(symbol, { status: 'error', error: `Process exited with code ${code}` });
+        resolve();
+      }
+    });
+  });
+}
 
 const app      = express();
 const PORT     = 3737;
@@ -33,6 +74,18 @@ const NEWS_FILE     = path.join(DATA_DIR, 'news.json');
 const CONFIG_FILE   = path.join(DATA_DIR, 'news-config.json');
 const ARTICLES_DIR  = path.join(DATA_DIR, 'articles');
 const REPORTS_DIR   = path.join(DATA_DIR, 'reports');
+const TAXONOMY_FILE = path.join(DATA_DIR, 'signal-taxonomy.json');
+
+// Taxonomy helpers — inlined here so we never require() report-gen.js (and its
+// heavy @xenova/transformers dependency) in the main process. That native ONNX
+// module must only load inside the report worker thread.
+async function loadTaxonomy() {
+  try { return JSON.parse(await fs.readFile(TAXONOMY_FILE, 'utf8')); }
+  catch { return { version: 1, signalThreshold: 0.28, dedupeThreshold: 0.82, categories: [] }; }
+}
+async function saveTaxonomy(taxonomy) {
+  await fs.writeFile(TAXONOMY_FILE, JSON.stringify(taxonomy, null, 2));
+}
 
 // ─── Default config ───────────────────────────────────────────────────────────
 // Bump configVersion whenever sources are added/removed so clients re-sync localStorage.
@@ -257,6 +310,9 @@ async function runCrawl() {
   const config   = await loadConfig();
   const existing = await loadNews();
 
+  // Track existing IDs so we can detect what's genuinely new this run.
+  const existingIds = new Set((existing.articles || []).map(a => a.id));
+
   let fresh = [];
   try {
     fresh = await crawlAllSources(config);
@@ -274,10 +330,24 @@ async function runCrawl() {
 
   const result = { articles, lastUpdated: new Date().toISOString(), count: articles.length };
   await saveNews(result);
-  console.log(`[${new Date().toISOString()}] Crawl done — ${fresh.length} new, ${articles.length} total`);
 
-  // Background: extract & cache article content (non-blocking)
+  // Determine which symbols received new articles this run.
+  const newArticles     = fresh.filter(a => !existingIds.has(a.id));
+  const affectedSymbols = [...new Set(newArticles.map(a => a.symbol))];
+
+  console.log(`[${new Date().toISOString()}] Crawl done — ${newArticles.length} new, ${articles.length} total`);
+
+  // Background: extract & cache article content (non-blocking).
   cacheNewArticles(articles).catch(err => console.error('[Readability] Cache error:', err));
+
+  // Auto-trigger signal analysis for every symbol that received new articles.
+  if (affectedSymbols.length > 0) {
+    console.log(`[Crawl] New articles for: ${affectedSymbols.join(', ')} — queuing signal analysis`);
+    // Run sequentially so we don't saturate the CPU on a local machine.
+    (async () => {
+      for (const sym of affectedSymbols) await _runReportWorker(sym, 4 * 3600 * 1000);
+    })().catch(err => console.error('[Crawl] Signal analysis error:', err.message));
+  }
 
   return result;
 }
@@ -400,23 +470,39 @@ app.get('/api/news/report/:symbol', async (req, res) => {
   }
 });
 
-// POST /api/news/report/:symbol — trigger generation for one symbol
-app.post('/api/news/report/:symbol', async (req, res) => {
+// POST /api/news/report/:symbol — spawn worker (returns immediately)
+app.post('/api/news/report/:symbol', (req, res) => {
   const symbol   = req.params.symbol;
   const windowMs = parseInt(req.query.window || '14400000'); // default 4h
-  try {
-    const report = await generateReport(symbol, windowMs);
-    res.json({ ok: true, report });
-  } catch (err) { res.status(500).json({ error: err.message }); }
+  if (_reportJobs.get(symbol)?.status === 'running') {
+    return res.json({ ok: true, status: 'running' });
+  }
+  _runReportWorker(symbol, windowMs); // fire-and-forget
+  res.json({ ok: true, status: 'queued' });
 });
 
-// POST /api/news/reports/generate — trigger generation for all symbols
-app.post('/api/news/reports/generate', async (req, res) => {
-  try {
-    const config = await loadConfig();
-    res.json({ ok: true, message: 'Report generation started' });
-    generateAllReports(config).catch(err => console.error('[Reports] Error:', err.message));
-  } catch (err) { res.status(500).json({ error: err.message }); }
+// GET /api/news/report/:symbol/status — poll one job
+app.get('/api/news/report/:symbol/status', (req, res) => {
+  const job = _reportJobs.get(req.params.symbol);
+  if (!job) return res.json({ status: 'idle' });
+  res.json({ status: job.status, report: job.report || null, error: job.error || null });
+});
+
+// GET /api/news/reports/status — bulk status for all tracked symbols
+app.get('/api/news/reports/status', (_req, res) => {
+  const result = {};
+  for (const [sym, job] of _reportJobs.entries()) {
+    result[sym] = { status: job.status };
+  }
+  res.json(result);
+});
+
+// POST /api/news/reports/generate — trigger all symbols via workers (sequential)
+app.post('/api/news/reports/generate', async (_req, res) => {
+  const config = await loadConfig();
+  res.json({ ok: true, message: 'Report generation queued' });
+  const symbols = [...(config.symbols || []), 'MARKET'];
+  for (const sym of symbols) await _runReportWorker(sym, 4 * 3600 * 1000);
 });
 
 app.get('/api/ping', (_, res) => res.json({ ok: true, ts: new Date().toISOString() }));
@@ -429,10 +515,11 @@ async function start() {
   await migrateConfig();
   await runCrawl();
   cron.schedule('*/5 * * * *', runCrawl);
-  // Generate reports every hour (non-blocking, after models warm up)
+  // Generate reports every hour via workers — sequential, non-blocking
   cron.schedule('0 * * * *', async () => {
-    const config = await loadConfig();
-    generateAllReports(config).catch(err => console.error('[Reports] Cron error:', err.message));
+    const config  = await loadConfig();
+    const symbols = [...(config.symbols || []), 'MARKET'];
+    for (const sym of symbols) await _runReportWorker(sym, 4 * 3600 * 1000);
   });
 
   app.listen(PORT, () => {
