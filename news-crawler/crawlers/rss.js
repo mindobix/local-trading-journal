@@ -22,13 +22,22 @@ function parseDate(s) {
   catch { return new Date().toISOString(); }
 }
 
+function decodeEntities(s) {
+  // Numeric hex: &#x2014; → —
+  s = s.replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => String.fromCodePoint(parseInt(hex, 16)));
+  // Numeric decimal: &#8212; → —
+  s = s.replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(parseInt(dec, 10)));
+  return s;
+}
+
 function strip(html) {
   if (!html) return '';
-  return String(html)
+  const s = String(html)
     .replace(/<[^>]+>/g, ' ')
     .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
     .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&nbsp;/g, ' ')
     .replace(/\s+/g, ' ').trim();
+  return decodeEntities(s);
 }
 
 function getText(node) {

@@ -12,10 +12,18 @@ const cors     = require('cors');
 const cron     = require('node-cron');
 const path     = require('path');
 const fs       = require('fs').promises;
+const http     = require('http');
+const https    = require('https');
 const axios    = require('axios');
 const { JSDOM }        = require('jsdom');
 const { Readability }  = require('@mozilla/readability');
+
+// Yahoo Finance and some sites send huge cookie/redirect headers — raise the cap.
+const LARGE_HEADER_SIZE = 64 * 1024; // 64 KB
+const httpAgent  = new http.Agent ({ maxHeaderSize: LARGE_HEADER_SIZE, keepAlive: false });
+const httpsAgent = new https.Agent({ maxHeaderSize: LARGE_HEADER_SIZE, keepAlive: false });
 const { crawlAllSources } = require('./crawlers/index');
+const { generateReport, generateAllReports, loadTaxonomy, saveTaxonomy } = require('./report-gen');
 
 const app      = express();
 const PORT     = 3737;
@@ -24,37 +32,41 @@ const DATA_DIR = path.join(ROOT, 'data');
 const NEWS_FILE     = path.join(DATA_DIR, 'news.json');
 const CONFIG_FILE   = path.join(DATA_DIR, 'news-config.json');
 const ARTICLES_DIR  = path.join(DATA_DIR, 'articles');
+const REPORTS_DIR   = path.join(DATA_DIR, 'reports');
 
 // ─── Default config ───────────────────────────────────────────────────────────
+// Bump configVersion whenever sources are added/removed so clients re-sync localStorage.
 const DEFAULT_CONFIG = {
-  symbols: ['TSLA', 'SPY', 'QQQ', 'MU', 'META'],
+  configVersion: 1,
+  // User-managed symbols only — MARKET, SPX, SPY, QQQ are pinned and not listed here.
+  symbols: ['TSLA', 'MU', 'META'],
   sources: [
+    // ── SPX (S&P 500 index) — pinned ─────────────────────────────────────────
+    { id: 'yf-spx',     name: 'Yahoo Finance', type: 'rss', symbol: 'SPX',  enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=US&lang=en-US' },
+    { id: 'nq-spx',     name: 'Nasdaq',        type: 'rss', symbol: 'SPX',  enabled: true,  url: 'https://www.nasdaq.com/feed/rssoutbound?symbol=SPX' },
+    // ── SPY — pinned ─────────────────────────────────────────────────────────
+    { id: 'yf-spy',     name: 'Yahoo Finance', type: 'rss', symbol: 'SPY',  enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=SPY&region=US&lang=en-US' },
+    { id: 'nq-spy',     name: 'Nasdaq',        type: 'rss', symbol: 'SPY',  enabled: false, url: 'https://www.nasdaq.com/feed/rssoutbound?symbol=SPY' },
+    // ── QQQ — pinned ─────────────────────────────────────────────────────────
+    { id: 'yf-qqq',     name: 'Yahoo Finance', type: 'rss', symbol: 'QQQ',  enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=QQQ&region=US&lang=en-US' },
+    { id: 'nq-qqq',     name: 'Nasdaq',        type: 'rss', symbol: 'QQQ',  enabled: false, url: 'https://www.nasdaq.com/feed/rssoutbound?symbol=QQQ' },
     // ── TSLA ─────────────────────────────────────────────────────────────────
     { id: 'yf-tsla',    name: 'Yahoo Finance', type: 'rss', symbol: 'TSLA', enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=TSLA&region=US&lang=en-US' },
-    { id: 'fv-tsla',    name: 'Finviz',        type: 'rss', symbol: 'TSLA', enabled: true,  url: 'https://finviz.com/rss.ashx?t=TSLA' },
     { id: 'nq-tsla',    name: 'Nasdaq',        type: 'rss', symbol: 'TSLA', enabled: true,  url: 'https://www.nasdaq.com/feed/rssoutbound?symbol=TSLA' },
-    // ── SPY ──────────────────────────────────────────────────────────────────
-    { id: 'yf-spy',     name: 'Yahoo Finance', type: 'rss', symbol: 'SPY',  enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=SPY&region=US&lang=en-US' },
-    { id: 'fv-spy',     name: 'Finviz',        type: 'rss', symbol: 'SPY',  enabled: true,  url: 'https://finviz.com/rss.ashx?t=SPY' },
-    { id: 'nq-spy',     name: 'Nasdaq',        type: 'rss', symbol: 'SPY',  enabled: false, url: 'https://www.nasdaq.com/feed/rssoutbound?symbol=SPY' },
-    // ── QQQ ──────────────────────────────────────────────────────────────────
-    { id: 'yf-qqq',     name: 'Yahoo Finance', type: 'rss', symbol: 'QQQ',  enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=QQQ&region=US&lang=en-US' },
-    { id: 'fv-qqq',     name: 'Finviz',        type: 'rss', symbol: 'QQQ',  enabled: true,  url: 'https://finviz.com/rss.ashx?t=QQQ' },
-    { id: 'nq-qqq',     name: 'Nasdaq',        type: 'rss', symbol: 'QQQ',  enabled: false, url: 'https://www.nasdaq.com/feed/rssoutbound?symbol=QQQ' },
     // ── MU ───────────────────────────────────────────────────────────────────
     { id: 'yf-mu',      name: 'Yahoo Finance', type: 'rss', symbol: 'MU',   enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=MU&region=US&lang=en-US' },
-    { id: 'fv-mu',      name: 'Finviz',        type: 'rss', symbol: 'MU',   enabled: true,  url: 'https://finviz.com/rss.ashx?t=MU' },
     { id: 'nq-mu',      name: 'Nasdaq',        type: 'rss', symbol: 'MU',   enabled: true,  url: 'https://www.nasdaq.com/feed/rssoutbound?symbol=MU' },
     // ── META ─────────────────────────────────────────────────────────────────
     { id: 'yf-meta',    name: 'Yahoo Finance', type: 'rss', symbol: 'META', enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=META&region=US&lang=en-US' },
-    { id: 'fv-meta',    name: 'Finviz',        type: 'rss', symbol: 'META', enabled: true,  url: 'https://finviz.com/rss.ashx?t=META' },
     { id: 'nq-meta',    name: 'Nasdaq',        type: 'rss', symbol: 'META', enabled: true,  url: 'https://www.nasdaq.com/feed/rssoutbound?symbol=META' },
-    // ── MARKET (broad) ───────────────────────────────────────────────────────
-    { id: 'cnbc-mkt',   name: 'CNBC Markets',  type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://www.cnbc.com/id/10000664/device/rss/rss.html'  },
-    { id: 'cnbc-fin',   name: 'CNBC Finance',  type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://www.cnbc.com/id/10001147/device/rss/rss.html'  },
-    { id: 'cnbc-tech',  name: 'CNBC Tech',     type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://www.cnbc.com/id/19854910/device/rss/rss.html'  },
-    { id: 'mw-top',     name: 'MarketWatch',   type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://feeds.marketwatch.com/marketwatch/topstories/' },
-    { id: 'inv-mkt',    name: 'Investing.com', type: 'rss', symbol: 'MARKET', enabled: false, url: 'https://www.investing.com/rss/news.rss'               },
+    // ── MARKET (equities / stock market) ────────────────────────────────────
+    { id: 'mkt-yf-spy',    name: 'Yahoo Finance SPY',    type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=SPY&region=US&lang=en-US' },
+    { id: 'mkt-yf-qqq',    name: 'Yahoo Finance QQQ',    type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=QQQ&region=US&lang=en-US' },
+    { id: 'mkt-yf-dia',    name: 'Yahoo Finance DIA',    type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=DIA&region=US&lang=en-US' },
+    { id: 'mkt-cnbc-tech', name: 'CNBC Tech',            type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://www.cnbc.com/id/19854910/device/rss/rss.html'                        },
+    { id: 'mkt-mw-stocks', name: 'MarketWatch Stocks',   type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://feeds.marketwatch.com/marketwatch/marketpulse/'                      },
+    { id: 'mkt-sa-wall',   name: 'Seeking Alpha Wall St',type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://seekingalpha.com/market_currents.xml'                                },
+    { id: 'mkt-nq-mkt',    name: 'Nasdaq Market News',   type: 'rss', symbol: 'MARKET', enabled: true,  url: 'https://www.nasdaq.com/feed/rssoutbound?category=Markets'                    },
   ],
   refreshInterval: 300,
   maxArticlesPerSource: 25,
@@ -98,19 +110,44 @@ async function migrateConfig() {
     return;
   }
 
-  const before = cfg.sources.length;
-  cfg.sources = cfg.sources.filter(s => s.type === 'rss' || s.type === 'atom');
+  // IDs that are permanently dead/blocked — remove from any saved config.
+  const DEAD_IDS = new Set([
+    'fv-tsla', 'fv-spy', 'fv-qqq', 'fv-mu', 'fv-meta',   // Finviz (404)
+    'reuters-biz', 'reuters-top',                           // Reuters (dead domain)
+    'inv-all', 'inv-econ', 'inv-mkt', 'mkt-inv-stk',       // Investing.com (403)
+    'ap-finance', 'ap-economy',                             // AP News (not working)
+    'mkt-benzinga',                                         // Benzinga (404)
+    'ms-eq-news', 'ms-analyst',                             // MarketScreener (404)
+    'cnbc-econ', 'cnbc-mkt', 'cnbc-fin',                   // MACRO removed
+    'mw-top', 'fed-monetary', 'bls-latest',                 // MACRO removed
+  ]);
 
+  // Remove SPY/QQQ from user-managed symbols — they are now pinned tabs.
+  const PINNED_SYMS = new Set(['MARKET', 'SPX', 'SPY', 'QQQ']);
+  cfg.symbols = (cfg.symbols || []).filter(s => !PINNED_SYMS.has(s));
+
+  const before = cfg.sources.length;
+  cfg.sources = cfg.sources.filter(s =>
+    (s.type === 'rss' || s.type === 'atom') && !DEAD_IDS.has(s.id)
+  );
+  const removed = before - cfg.sources.length;
+
+  let added = 0;
   for (const def of DEFAULT_CONFIG.sources) {
     if (!cfg.sources.find(s => s.id === def.id)) {
       cfg.sources.push(def);
       console.log(`[Config] Added missing source: ${def.name} (${def.symbol})`);
+      added++;
     }
   }
 
-  if (before !== cfg.sources.length) {
+  // Always sync configVersion so the client can detect stale localStorage caches.
+  const versionChanged = cfg.configVersion !== DEFAULT_CONFIG.configVersion;
+  if (versionChanged) cfg.configVersion = DEFAULT_CONFIG.configVersion;
+
+  if (removed > 0 || added > 0 || versionChanged) {
     await fs.writeFile(CONFIG_FILE, JSON.stringify(cfg, null, 2));
-    console.log(`[Config] Migrated config — removed ${before - cfg.sources.length} unsupported sources.`);
+    console.log(`[Config] Migrated config — removed ${removed}, added ${added} sources, version → ${cfg.configVersion}.`);
   }
 }
 
@@ -121,11 +158,28 @@ const FETCH_HEADERS = {
   'Accept-Language': 'en-US,en;q=0.9',
 };
 
+// Domains that consistently block scraping — skip Readability entirely.
+const BLOCKED_DOMAINS = new Set([
+  'investing.com', 'www.investing.com',
+]);
+
+function _isBlocked(url) {
+  try { return BLOCKED_DOMAINS.has(new URL(url).hostname); }
+  catch { return false; }
+}
+
 async function readableExtract(url) {
+  if (_isBlocked(url)) {
+    const err = new Error('Domain is blocked for Readability extraction');
+    err.response = { status: 403 };
+    throw err;
+  }
   const resp = await axios.get(url, {
     headers: FETCH_HEADERS,
     timeout: 20000,
     maxContentLength: 5 * 1024 * 1024, // 5 MB cap
+    httpAgent,
+    httpsAgent,
   });
 
   const dom = new JSDOM(resp.data, { url });
@@ -185,8 +239,14 @@ async function cacheOneArticle(article) {
     await fs.writeFile(file, JSON.stringify(data));
     console.log(`[Readability] ✓ ${article.title?.slice(0, 60)}`);
   } catch (err) {
+    const status = err.response?.status;
+    const permanent = status >= 400 && status < 500;
     console.warn(`[Readability] ✗ ${article.url?.slice(0, 80)} — ${err.message}`);
-    // Don't write sentinel on network errors — allow retry next crawl
+    if (permanent) {
+      // 4xx = client error (blocked, paywalled, gone) — no point retrying
+      await fs.writeFile(file, JSON.stringify({ failed: true, status, cachedAt: new Date().toISOString() }));
+    }
+    // 5xx / network errors — leave uncached so next crawl retries
   }
 }
 
@@ -207,9 +267,10 @@ async function runCrawl() {
   const map = new Map((existing.articles || []).map(a => [a.id, a]));
   for (const a of fresh) map.set(a.id, a);
 
+  const cutoff24h = Date.now() - 86_400_000;
   const articles = [...map.values()]
-    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt))
-    .slice(0, config.maxTotalArticles || 500);
+    .filter(a => new Date(a.publishedAt).getTime() >= cutoff24h)
+    .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
   const result = { articles, lastUpdated: new Date().toISOString(), count: articles.length };
   await saveNews(result);
@@ -312,15 +373,67 @@ app.get('/api/news/article', async (req, res) => {
   res.status(400).json({ error: 'id or url required' });
 });
 
+// ─── Signal taxonomy endpoints ────────────────────────────────────────────────
+
+app.get('/api/news/taxonomy', async (req, res) => {
+  try { res.json(await loadTaxonomy()); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.put('/api/news/taxonomy', async (req, res) => {
+  try {
+    await saveTaxonomy(req.body);
+    res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ─── Report endpoints ─────────────────────────────────────────────────────────
+
+// GET /api/news/report/:symbol — return cached report (404 if not yet generated)
+app.get('/api/news/report/:symbol', async (req, res) => {
+  try {
+    const file = path.join(REPORTS_DIR, `${req.params.symbol}.json`);
+    const data = JSON.parse(await fs.readFile(file, 'utf8'));
+    res.json(data);
+  } catch {
+    res.status(404).json({ error: 'Report not generated yet' });
+  }
+});
+
+// POST /api/news/report/:symbol — trigger generation for one symbol
+app.post('/api/news/report/:symbol', async (req, res) => {
+  const symbol   = req.params.symbol;
+  const windowMs = parseInt(req.query.window || '14400000'); // default 4h
+  try {
+    const report = await generateReport(symbol, windowMs);
+    res.json({ ok: true, report });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// POST /api/news/reports/generate — trigger generation for all symbols
+app.post('/api/news/reports/generate', async (req, res) => {
+  try {
+    const config = await loadConfig();
+    res.json({ ok: true, message: 'Report generation started' });
+    generateAllReports(config).catch(err => console.error('[Reports] Error:', err.message));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.get('/api/ping', (_, res) => res.json({ ok: true, ts: new Date().toISOString() }));
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 async function start() {
   await fs.mkdir(DATA_DIR, { recursive: true });
   await fs.mkdir(ARTICLES_DIR, { recursive: true });
+  await fs.mkdir(REPORTS_DIR, { recursive: true });
   await migrateConfig();
   await runCrawl();
   cron.schedule('*/5 * * * *', runCrawl);
+  // Generate reports every hour (non-blocking, after models warm up)
+  cron.schedule('0 * * * *', async () => {
+    const config = await loadConfig();
+    generateAllReports(config).catch(err => console.error('[Reports] Cron error:', err.message));
+  });
 
   app.listen(PORT, () => {
     console.log('');

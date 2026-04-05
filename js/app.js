@@ -274,14 +274,16 @@ function closeImportErrors() {
 
 function backupData() {
   const backup = {
-    version:    4,  // v4: trades include profitTargets and stopLoss arrays
+    version:    5,  // v5: includes newsConfig and newsTaxonomy
     exportedAt: new Date().toISOString(),
-    trades:   load(),
-    tags:     loadTags(),
-    mistakes: loadMistakes(),
-    rules:    loadRules(),
-    plans:    loadPlans(),
-    ideas:    loadIdeas(),
+    trades:       load(),
+    tags:         loadTags(),
+    mistakes:     loadMistakes(),
+    rules:        loadRules(),
+    plans:        loadPlans(),
+    ideas:        loadIdeas(),
+    newsConfig:   typeof getNewsConfigForBackup   === 'function' ? getNewsConfigForBackup()   : null,
+    newsTaxonomy: typeof getTaxonomyForBackup     === 'function' ? getTaxonomyForBackup()     : null,
   };
   const json  = JSON.stringify(backup, null, 2);
   const blob  = new Blob([json], { type: 'application/json' });
@@ -298,7 +300,7 @@ function restoreData(event) {
   const file = event.target.files[0];
   if (!file) return;
   const reader = new FileReader();
-  reader.onload = e => {
+  reader.onload = async e => {
     let raw;
     try {
       raw = JSON.parse(e.target.result);
@@ -402,6 +404,18 @@ function restoreData(event) {
     localStorage.setItem(PLANS_KEY, JSON.stringify(mergedPlans));
     saveIdeas(mergedIdeas);
 
+    // Restore news settings (replace, not merge — they're whole config objects)
+    let restoredNewsConfig   = false;
+    let restoredNewsTaxonomy = false;
+    if (incoming.newsConfig && typeof restoreNewsConfig === 'function') {
+      await restoreNewsConfig(incoming.newsConfig);
+      restoredNewsConfig = true;
+    }
+    if (incoming.newsTaxonomy && typeof restoreNewsTaxonomy === 'function') {
+      await restoreNewsTaxonomy(incoming.newsTaxonomy);
+      restoredNewsTaxonomy = true;
+    }
+
     event.target.value = '';
 
     refreshAllViews();
@@ -423,6 +437,8 @@ function restoreData(event) {
     if (updatedPlans  > 0) parts.push(`${updatedPlans} daily plan${updatedPlans !== 1 ? 's' : ''} updated`);
     if (addedIdeas    > 0) parts.push(`${addedIdeas} trade plan idea${addedIdeas !== 1 ? 's' : ''} added`);
     if (updatedIdeas  > 0) parts.push(`${updatedIdeas} trade plan idea${updatedIdeas !== 1 ? 's' : ''} updated`);
+    if (restoredNewsConfig)   parts.push('news sources restored');
+    if (restoredNewsTaxonomy) parts.push('signal taxonomy restored');
     if (parts.length === 0) parts.push('nothing new');
 
     showImportSuccess(parts.join(', ') + ' restored.');

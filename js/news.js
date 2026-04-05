@@ -1,38 +1,83 @@
-// ─── MARKET NEWS MODULE ───────────────────────────────────────────────────────
+// ─── MACRO NEWS MODULE ───────────────────────────────────────────────────────
 // Connects to the news-crawler server running at http://localhost:3737
 // If the app is opened via the server itself, relative URLs are used automatically.
 
 const NEWS_API  = 'http://localhost:3737/api';
 const NEWS_POLL = 30000; // 30s UI poll interval
 
+// ─── localStorage keys ────────────────────────────────────────────────────────
+const NEWS_CONFIG_LS_KEY   = 'ltj_news_config';
+const NEWS_TAXONOMY_LS_KEY = 'ltj_news_taxonomy';
+
+// Tabs that are always present, always first, and cannot be deleted.
+const PINNED_SYMS = ['MARKET', 'SPX', 'SPY', 'QQQ'];
+
+function _lsGetNewsConfig()   { try { return JSON.parse(localStorage.getItem(NEWS_CONFIG_LS_KEY));   } catch { return null; } }
+function _lsGetNewsTaxonomy() { try { return JSON.parse(localStorage.getItem(NEWS_TAXONOMY_LS_KEY)); } catch { return null; } }
+function _lsSaveNewsConfig(cfg)  { try { localStorage.setItem(NEWS_CONFIG_LS_KEY,   JSON.stringify(cfg));  } catch {} }
+function _lsSaveNewsTaxonomy(tx) { try { localStorage.setItem(NEWS_TAXONOMY_LS_KEY, JSON.stringify(tx));   } catch {} }
+
+// ─── Public helpers for backup/restore ───────────────────────────────────────
+function getNewsConfigForBackup()   { return _news.config   || _lsGetNewsConfig();   }
+function getTaxonomyForBackup()     { return _news.taxonomy || _lsGetNewsTaxonomy(); }
+
+async function restoreNewsConfig(cfg) {
+  if (!cfg) return;
+  _lsSaveNewsConfig(cfg);
+  _news.config = cfg;
+  try {
+    await fetch(`${NEWS_API}/news/config`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg)
+    });
+  } catch { /* server may be offline — localStorage already updated */ }
+  _renderSymbolTabs();
+}
+
+async function restoreNewsTaxonomy(tx) {
+  if (!tx) return;
+  _lsSaveNewsTaxonomy(tx);
+  _news.taxonomy = tx;
+  try {
+    await fetch(`${NEWS_API}/news/taxonomy`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tx)
+    });
+  } catch { /* server may be offline — localStorage already updated */ }
+}
+
 const _news = {
   articles:         [],
   articlesById:     {},
   config:           null,
   lastUpdated:      null,
-  activeSymbol:     'ALL',
-  activeTimeFilter: 'all',
+  activeSymbol:     'MARKET',
+  activeTimeFilter: '1d',
   serverOnline:     false,
   pollTimer:        null,
   crawling:         false,
   editingId:        null,
   addingFeedFor:    null,
   activeArticleId:  null,
+  report:           null,       // latest report for activeSymbol
+  reportGenerating: false,
+  reportsAvailable: new Set(),  // symbols that have a cached report on the server
+  taxonomy:         null,
 };
 
 const _TIME_FILTERS = [
-  { key: 'all', label: 'All Time', ms: null              },
-  { key: '1h',  label: '< 1 Hr',  ms: 3_600_000         },
-  { key: '4h',  label: '< 4 Hrs', ms: 14_400_000        },
-  { key: '1d',  label: '1 Day',   ms: 86_400_000        },
-  { key: '1w',  label: '1 Week',  ms: 604_800_000       },
+  { key: '1h',  label: '< 1 Hr',   ms: 3_600_000  },
+  { key: '4h',  label: '< 4 Hrs',  ms: 14_400_000 },
+  { key: '8h',  label: '< 8 Hrs',  ms: 28_800_000 },
+  { key: '12h', label: '< 12 Hrs', ms: 43_200_000 },
+  { key: '1d',  label: '1 Day',    ms: 86_400_000 },
 ];
 
 // ─── PUBLIC: called from switchView('news') ───────────────────────────────────
 async function initNewsView() {
   renderNewsShell();
-  _renderTimeTabs();   // render immediately so bar is visible before data loads
-  await Promise.all([loadNewsConfig(), loadNews()]);
+  _renderTimeTabs();
+  await Promise.all([loadNewsConfig(), loadNews(), _loadTaxonomy()]);
+  _loadReport(_news.activeSymbol);
+  _prefetchReportStatus();   // background — lights up dots as reports are found
   _startNewsPoll();
 }
 
@@ -49,14 +94,160 @@ function _startNewsPoll() {
   }, NEWS_POLL);
 }
 
+// ─── TAXONOMY ────────────────────────────────────────────────────────────────
+async function _loadTaxonomy() {
+  try {
+    const r = await fetch(`${NEWS_API}/news/taxonomy`);
+    if (!r.ok) throw new Error();
+    _news.taxonomy = await r.json();
+    _lsSaveNewsTaxonomy(_news.taxonomy);      // keep localStorage in sync
+  } catch {
+    _news.taxonomy = _lsGetNewsTaxonomy();    // fall back to cached copy
+  }
+}
+
+// ─── REPORT ──────────────────────────────────────────────────────────────────
+async function _loadReport(symbol) {
+  if (!symbol) { _news.report = null; _renderReportPanel(); return; }
+  try {
+    const r = await fetch(`${NEWS_API}/news/report/${encodeURIComponent(symbol)}`);
+    _news.report = r.ok ? await r.json() : null;
+  } catch {
+    _news.report = null;
+  }
+  if (_news.report) {
+    _news.reportsAvailable.add(symbol);
+    _renderSymbolTabs();
+  }
+  _renderReportPanel();
+}
+
+// Silently check every visible tab for an existing report and light up its dot.
+async function _prefetchReportStatus() {
+  const userSyms = (_news.config?.symbols || []).filter(s => !PINNED_SYMS.includes(s));
+  const allSyms  = [...PINNED_SYMS, ...userSyms];
+  await Promise.all(allSyms.map(async sym => {
+    try {
+      const r = await fetch(`${NEWS_API}/news/report/${encodeURIComponent(sym)}`);
+      if (r.ok) {
+        const data = await r.json();
+        if (data && data.clusters) _news.reportsAvailable.add(sym);
+      }
+    } catch { /* silent */ }
+  }));
+  _renderSymbolTabs();
+}
+
+async function triggerReport() {
+  const sym = _news.activeSymbol;
+  if (!sym || _news.reportGenerating) return;
+  _news.reportGenerating = true;
+  _renderReportPanel();
+  try {
+    const tf = _TIME_FILTERS.find(f => f.key === _news.activeTimeFilter);
+    const window = tf?.ms || 86400000;
+    const r = await fetch(`${NEWS_API}/news/report/${encodeURIComponent(sym)}?window=${window}`, { method: 'POST' });
+    if (r.ok) {
+      const data = await r.json();
+      _news.report = data.report;
+      if (_news.report) {
+        _news.reportsAvailable.add(sym);
+        _renderSymbolTabs();
+      }
+    }
+  } catch { /* silent */ }
+  _news.reportGenerating = false;
+  _renderReportPanel();
+}
+
+function _renderReportPanel() {
+  const el   = document.getElementById('news-report-panel');
+  const body = document.getElementById('news-body');
+  if (!el) return;
+
+  const sym = _news.activeSymbol;
+  if (!sym) {
+    el.innerHTML = '';
+    body?.classList.remove('signal-visible');
+    return;
+  }
+
+  body?.classList.add('signal-visible');
+
+  if (_news.reportGenerating) {
+    el.innerHTML = `<div class="nrp-wrap nrp-loading">
+      <span class="nrp-spinner"></span>
+      <div>Generating signal report for <strong>${_esc(sym)}</strong>…</div>
+    </div>`;
+    return;
+  }
+
+  const report = _news.report;
+  if (!report) {
+    el.innerHTML = `<div class="nrp-wrap nrp-empty">
+      <div class="nrp-empty-icon">📊</div>
+      <div class="nrp-label">No report yet for <strong>${_esc(sym)}</strong></div>
+      <button class="nrp-gen-btn nrp-gen-btn-lg" onclick="triggerReport()">Generate Signal Report</button>
+    </div>`;
+    return;
+  }
+
+  const sentimentClass = { bullish: 'nrp-bull', bearish: 'nrp-bear', mixed: 'nrp-mix', neutral: 'nrp-neu' }[report.sentiment] || 'nrp-neu';
+  const sentimentIcon  = { bullish: '▲', bearish: '▼', mixed: '◆', neutral: '─' }[report.sentiment] || '─';
+  const age = _timeAgo(report.generatedAt);
+
+  const storiesHTML = (report.clusters || []).slice(0, 5).map(c => {
+    const rep = c.representative;
+    const dupeLabel  = c.duplicates?.length ? `<span class="nrp-dupes">+${c.duplicates.length} similar</span>` : '';
+    const score      = rep.score ? `<span class="nrp-score">${Math.round(rep.score * 100)}%</span>` : '';
+    const pillsHTML  = (rep.categoryMatches || (rep.matchedCategory ? [{ category: rep.matchedCategory }] : []))
+      .map(m => `<span class="nrp-cat-pill" style="${_catPillStyle(m.category)}" title="${_esc(m.signal || '')}">${_esc(m.category)}</span>`)
+      .join('');
+    return `
+      <div class="nrp-story" onclick="_openArticle('${_esc(rep.id)}')">
+        <div class="nrp-story-meta">
+          ${score}${dupeLabel}<span class="nrp-story-src">${_esc(rep.source)}</span>
+        </div>
+        <div class="nrp-story-title">${_esc(rep.title)}</div>
+        ${pillsHTML ? `<div class="nrp-cat-pills">${pillsHTML}</div>` : ''}
+        ${rep.summary ? `<div class="nrp-story-summary">${_esc(rep.summary)}</div>` : ''}
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="nrp-wrap">
+      <div class="nrp-hdr-row">
+        <span class="nrp-sym-badge" style="background:${_symColor(sym)}">${_esc(sym)}</span>
+        <span class="nrp-title">Signal Report</span>
+        <button class="nrp-gen-btn" onclick="triggerReport()" title="Regenerate">↻</button>
+      </div>
+      <div class="nrp-sentiment-block ${sentimentClass}">
+        <span class="nrp-sent-icon">${sentimentIcon}</span>
+        <span class="nrp-sent-label">${report.sentiment}</span>
+      </div>
+      <div class="nrp-stats-row">
+        <div class="nrp-stat"><span class="nrp-stat-val">${report.signalCount ?? 0}</span><span class="nrp-stat-lbl">signal</span></div>
+        <div class="nrp-stat"><span class="nrp-stat-val">${report.noiseCount ?? 0}</span><span class="nrp-stat-lbl">noise</span></div>
+        <div class="nrp-stat"><span class="nrp-stat-val">${report.clusters?.length ?? 0}</span><span class="nrp-stat-lbl">stories</span></div>
+      </div>
+      <div class="nrp-age-row">Updated ${_esc(age)}</div>
+      <div class="nrp-stories">
+        ${storiesHTML || '<div class="nrp-no-stories">No high-signal articles in this window.</div>'}
+      </div>
+    </div>`;
+}
+
 // ─── DATA ─────────────────────────────────────────────────────────────────────
 async function loadNewsConfig() {
   try {
     const r = await fetch(`${NEWS_API}/news/config`);
     if (!r.ok) throw new Error();
     _news.config = await r.json();
+    _lsSaveNewsConfig(_news.config);          // keep localStorage in sync (includes configVersion)
   } catch {
-    _news.config = { symbols: ['TSLA','SPY','QQQ','MU','META'], sources: [] };
+    // Fall back to localStorage with version-aware migration, then hardcoded default
+    _news.config = _lsGetNewsConfigWithMigration()
+      || { configVersion: CLIENT_CONFIG_VERSION, symbols: ['TSLA','SPY','QQQ','MU','META'], sources: [...CLIENT_DEFAULT_SOURCES_V2] };
   }
   _renderSymbolTabs();
   _renderTimeTabs();
@@ -64,7 +255,7 @@ async function loadNewsConfig() {
 
 async function loadNews() {
   const sym = _news.activeSymbol;
-  const qs  = sym !== 'ALL' ? `?symbol=${encodeURIComponent(sym)}&limit=300` : '?limit=300';
+  const qs  = `?symbol=${encodeURIComponent(sym)}&limit=300`;
   try {
     const r = await fetch(`${NEWS_API}/news${qs}`);
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -125,10 +316,15 @@ function renderNewsShell() {
         </div>
       </div>
       <div class="news-time-bar" id="news-time-bar"></div>
-      <div class="news-feed-wrap" id="news-feed-wrap">
-        <div class="news-state-msg">
-          <div class="nsm-icon">⏳</div>
-          <div class="nsm-title">Loading market news…</div>
+      <div class="news-body" id="news-body">
+        <div class="news-signal-col" id="news-report-panel"></div>
+        <div class="news-feed-col">
+          <div class="news-feed-wrap" id="news-feed-wrap">
+            <div class="news-state-msg">
+              <div class="nsm-icon">⏳</div>
+              <div class="nsm-title">Loading macro news…</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -149,17 +345,22 @@ function renderNewsShell() {
 function _renderSymbolTabs() {
   const el = document.getElementById('news-sym-tabs');
   if (!el) return;
-  const syms = ['ALL', ...(_news.config?.symbols || []), 'MARKET'];
-  el.innerHTML = syms.map(s =>
-    `<button class="news-sym-tab${s === _news.activeSymbol ? ' active' : ''}"
-             onclick="_switchNewsSymbol('${_esc(s)}')">${_esc(s)}</button>`
-  ).join('');
+  const userSyms = (_news.config?.symbols || []).filter(s => !PINNED_SYMS.includes(s));
+  const syms = [...PINNED_SYMS, ...userSyms];
+  el.innerHTML = syms.map(s => {
+    const hasReport = _news.reportsAvailable.has(s);
+    const dot = hasReport ? '<span class="nst-dot"></span>' : '';
+    return `<button class="news-sym-tab${s === _news.activeSymbol ? ' active' : ''}"
+             onclick="_switchNewsSymbol('${_esc(s)}')">${dot}${_esc(s)}</button>`;
+  }).join('');
 }
 
 function _switchNewsSymbol(sym) {
   _news.activeSymbol = sym;
+  _news.report = null;
   _renderSymbolTabs();
-  loadNews();  // re-fetch then re-render (time filter applied in _renderFeed)
+  loadNews();
+  _loadReport(sym);
 }
 
 // ─── TIME-FILTER TABS ─────────────────────────────────────────────────────────
@@ -185,9 +386,7 @@ function _renderFeed() {
   if (!wrap) return;
 
   // 1. Symbol filter
-  let articles = _news.activeSymbol === 'ALL'
-    ? _news.articles
-    : _news.articles.filter(a => a.symbol === _news.activeSymbol);
+  let articles = _news.articles.filter(a => a.symbol === _news.activeSymbol);
 
   // 2. Time filter
   const tf = _TIME_FILTERS.find(f => f.key === _news.activeTimeFilter);
@@ -197,7 +396,6 @@ function _renderFeed() {
   }
 
   if (articles.length === 0) {
-    const isTimeFiltered = _news.activeTimeFilter !== 'all';
     const tfLabel = _TIME_FILTERS.find(f => f.key === _news.activeTimeFilter)?.label || '';
     wrap.classList.remove('nws-split-active');
     wrap.innerHTML = `
@@ -205,12 +403,9 @@ function _renderFeed() {
         <div class="nsm-icon">📰</div>
         <div class="nsm-title">No articles found</div>
         <div class="nsm-sub">
-          ${isTimeFiltered
-            ? `No articles in the <strong>${_esc(tfLabel)}</strong> window.
-               <button class="news-clear-tf-btn" onclick="_switchTimeFilter('all')">Show all time</button>`
-            : (_news.serverOnline
-                ? 'Nothing matched. Try clicking Refresh to crawl now.'
-                : 'Cannot reach the news crawler. Start the server first.')}
+          ${_news.serverOnline
+            ? `No articles in the <strong>${_esc(tfLabel)}</strong> window. Try a wider time filter or click Refresh.`
+            : 'Cannot reach the news crawler. Start the server first.'}
         </div>
       </div>`;
     return;
@@ -467,7 +662,8 @@ function _typeBadge(type) {
 // Returns sources grouped by symbol, preserving tracked-symbol order
 function _srcsBySymbol() {
   const cfg  = _news.config || { symbols: [], sources: [] };
-  const syms = [...(cfg.symbols || []), 'MARKET'];
+  const userSyms = (cfg.symbols || []).filter(s => !PINNED_SYMS.includes(s));
+  const syms = [...PINNED_SYMS, ...userSyms];
   const groups = {};
   for (const sym of syms) groups[sym] = [];
   for (const src of cfg.sources || []) {
@@ -524,9 +720,9 @@ function _srcEditFormHTML(s) {
 }
 
 // One ticker group block
-function _tickerGroupHTML(sym, sources, trackedSymbols) {
+function _tickerGroupHTML(sym, sources) {
   const activeCount = sources.filter(s => s.enabled !== false).length;
-  const isMarket    = sym === 'MARKET';
+  const isMarket    = PINNED_SYMS.includes(sym);
   const isAdding    = _news.addingFeedFor === sym;
   const placeholder = `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${sym}&region=US&lang=en-US`;
 
@@ -563,20 +759,148 @@ function _tickerGroupHTML(sym, sources, trackedSymbols) {
     </div>`;
 }
 
+// ─── TAXONOMY EDITOR ─────────────────────────────────────────────────────────
+function _taxonomyHTML() {
+  const tx = _news.taxonomy;
+  if (!tx) return `<div class="nws-tx-offline">Taxonomy unavailable — is the crawler server running?</div>`;
+
+  const thresholdPct   = Math.round((tx.signalThreshold ?? 0.28) * 100);
+  const dedupePct      = Math.round((tx.dedupeThreshold ?? 0.82) * 100);
+
+  const categoriesHTML = (tx.categories || []).map(cat => `
+    <div class="nws-tx-cat" id="nws-tx-cat-${_esc(cat.id)}">
+      <div class="nws-tx-cat-hdr" style="${_catHdrStyle(cat.label)}">
+        <label class="nws-toggle" title="${cat.enabled ? 'Enabled' : 'Disabled'}">
+          <input type="checkbox" ${cat.enabled ? 'checked' : ''}
+                 onchange="_txToggleCategory('${_esc(cat.id)}', this.checked)">
+          <span class="nws-toggle-track"><span class="nws-toggle-thumb"></span></span>
+        </label>
+        <span class="nws-tx-cat-name nrp-cat-pill" style="${_catPillStyle(cat.label)}">${_esc(cat.label)}</span>
+        <span class="nws-tx-cat-weight-wrap">
+          weight <input class="nws-tx-weight-inp" type="number" min="0.1" max="2" step="0.05"
+                        value="${cat.weight ?? 1.0}"
+                        onchange="_txSetWeight('${_esc(cat.id)}', this.value)">
+        </span>
+      </div>
+      <div class="nws-tx-signals">
+        ${(cat.signals || []).map((sig, idx) => `
+          <div class="nws-tx-sig-row">
+            <span class="nws-tx-sig-text">${_esc(sig)}</span>
+            <button class="nws-tx-sig-del" onclick="_txRemoveSignal('${_esc(cat.id)}', ${idx})" title="Remove">×</button>
+          </div>`).join('')}
+        <div class="nws-tx-sig-add-row">
+          <input class="nws-inp nws-tx-sig-inp" id="nws-tx-new-sig-${_esc(cat.id)}"
+                 placeholder="Add signal phrase…"
+                 onkeydown="if(event.key==='Enter')_txAddSignal('${_esc(cat.id)}')">
+          <button class="nws-add-btn" onclick="_txAddSignal('${_esc(cat.id)}')">+</button>
+        </div>
+      </div>
+    </div>`).join('');
+
+  return `
+    <div class="nws-tx-thresholds">
+      <label class="nws-tx-thresh-lbl">
+        Signal threshold
+        <span class="nws-tx-thresh-val" id="nws-tx-sig-val">${thresholdPct}%</span>
+        <input type="range" min="10" max="70" step="1" value="${thresholdPct}"
+               oninput="document.getElementById('nws-tx-sig-val').textContent=this.value+'%'"
+               onchange="_txSetThreshold('signal', this.value)">
+        <span class="nws-tx-thresh-hint">Higher = stricter filter</span>
+      </label>
+      <label class="nws-tx-thresh-lbl">
+        Dedupe threshold
+        <span class="nws-tx-thresh-val" id="nws-tx-dd-val">${dedupePct}%</span>
+        <input type="range" min="50" max="99" step="1" value="${dedupePct}"
+               oninput="document.getElementById('nws-tx-dd-val').textContent=this.value+'%'"
+               onchange="_txSetThreshold('dedupe', this.value)">
+        <span class="nws-tx-thresh-hint">Higher = less aggressive dedup</span>
+      </label>
+    </div>
+    <div class="nws-tx-cats">${categoriesHTML}</div>
+    <div class="nws-action-row" style="margin-top:10px">
+      <button class="nws-act-btn nws-act-crawl" onclick="_txAddCategory()">+ Add Category</button>
+    </div>`;
+}
+
+async function _txSave() {
+  if (!_news.taxonomy) return;
+  _lsSaveNewsTaxonomy(_news.taxonomy);
+  try {
+    await fetch(`${NEWS_API}/news/taxonomy`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(_news.taxonomy)
+    });
+  } catch { /* silent */ }
+}
+
+function _txToggleCategory(id, enabled) {
+  const cat = _news.taxonomy?.categories?.find(c => c.id === id);
+  if (cat) { cat.enabled = enabled; _txSave(); }
+}
+
+function _txSetWeight(id, val) {
+  const cat = _news.taxonomy?.categories?.find(c => c.id === id);
+  if (cat) { cat.weight = Math.max(0.1, Math.min(2, parseFloat(val) || 1)); _txSave(); }
+}
+
+function _txSetThreshold(type, val) {
+  if (!_news.taxonomy) return;
+  const v = parseInt(val) / 100;
+  if (type === 'signal') _news.taxonomy.signalThreshold = v;
+  else                   _news.taxonomy.dedupeThreshold = v;
+  _txSave();
+}
+
+async function _txAddSignal(catId) {
+  const inp = document.getElementById(`nws-tx-new-sig-${catId}`);
+  const sig = inp?.value.trim();
+  if (!sig) return;
+  const cat = _news.taxonomy?.categories?.find(c => c.id === catId);
+  if (cat) {
+    cat.signals.push(sig);
+    await _txSave();
+    openNewsSettings();
+  }
+}
+
+async function _txRemoveSignal(catId, idx) {
+  const cat = _news.taxonomy?.categories?.find(c => c.id === catId);
+  if (cat) {
+    cat.signals.splice(idx, 1);
+    await _txSave();
+    openNewsSettings();
+  }
+}
+
+async function _txAddCategory() {
+  const label = prompt('New category name:');
+  if (!label?.trim()) return;
+  const id = label.trim().toLowerCase().replace(/[^a-z0-9]+/g, '_');
+  if (!_news.taxonomy) return;
+  _news.taxonomy.categories.push({ id, label: label.trim(), enabled: true, weight: 1.0, signals: [] });
+  await _txSave();
+  openNewsSettings();
+}
+
 // ─── MAIN SETTINGS HTML ───────────────────────────────────────────────────────
 function _settingsHTML() {
-  const cfg    = _news.config || { symbols: [], sources: [] };
   const groups = _srcsBySymbol();
 
   return `
     <div class="nws-section">
       <div class="nws-section-lbl">Symbols &amp; Feeds</div>
-      ${Object.entries(groups).map(([sym, srcs]) => _tickerGroupHTML(sym, srcs, cfg.symbols || [])).join('')}
+      ${Object.entries(groups).map(([sym, srcs]) => _tickerGroupHTML(sym, srcs)).join('')}
       <div class="nws-add-sym-row">
         <input class="nws-inp" id="nws-sym-inp" placeholder="Add symbol (e.g. NVDA)"
                onkeydown="if(event.key==='Enter')_addSymbol()">
         <button class="nws-add-btn" onclick="_addSymbol()">+ Symbol</button>
       </div>
+    </div>
+
+    <div class="nws-section">
+      <div class="nws-section-lbl">Signal Taxonomy</div>
+      ${_taxonomyHTML()}
     </div>
 
     <div class="nws-section">
@@ -596,7 +920,38 @@ function _settingsHTML() {
 async function _addSymbol() {
   const inp = document.getElementById('nws-sym-inp');
   const sym = (inp?.value || '').trim().toUpperCase();
-  if (!sym || !_news.config || _news.config.symbols.includes(sym)) { if(inp) inp.value=''; return; }
+  if (!sym || !_news.config || PINNED_SYMS.includes(sym) || _news.config.symbols.includes(sym)) { if(inp) inp.value=''; return; }
+
+  // Find the donor symbol: last tracked symbol that has feeds with its ticker in the URL
+  const tracked = (_news.config.symbols || []).filter(s => !PINNED_SYMS.includes(s));
+  let donorSym   = null;
+  let donorFeeds = [];
+  // Walk backwards to pick the most recently added symbol that has clonable feeds
+  for (let i = tracked.length - 1; i >= 0; i--) {
+    const candidate = tracked[i];
+    const feeds = (_news.config.sources || []).filter(s =>
+      s.symbol === candidate &&
+      s.url?.toLowerCase().includes(candidate.toLowerCase())
+    );
+    if (feeds.length > 0) { donorSym = candidate; donorFeeds = feeds; break; }
+  }
+
+  // Clone donor feeds, substituting the symbol in id and url
+  if (donorSym && donorFeeds.length > 0) {
+    const re = new RegExp(donorSym, 'gi');
+    const cloned = donorFeeds.map(f => ({
+      ...f,
+      id:     f.id.replace(re, sym.toLowerCase()),
+      symbol: sym,
+      url:    f.url.replace(re, sym),
+    }));
+    // Only add feeds whose id doesn't already exist
+    const existingIds = new Set((_news.config.sources || []).map(s => s.id));
+    for (const feed of cloned) {
+      if (!existingIds.has(feed.id)) _news.config.sources.push(feed);
+    }
+  }
+
   _news.config.symbols.push(sym);
   await _saveConfig();
   _renderSymbolTabs();
@@ -677,6 +1032,7 @@ async function _clearNews() {
 }
 
 async function _saveConfig() {
+  _lsSaveNewsConfig(_news.config);
   try {
     await fetch(`${NEWS_API}/news/config`, {
       method: 'PUT',
@@ -750,9 +1106,36 @@ function _isToday(iso) {
 const _SYM_COLORS = {
   TSLA:'#e31937', SPY:'#1a6de0', QQQ:'#7c3aed', MU:'#0891b2',
   META:'#1877f2', NVDA:'#76b900', AAPL:'#555', MSFT:'#00a4ef',
-  AMZN:'#ff9900', GOOGL:'#4285f4', MARKET:'#374151',
+  AMZN:'#ff9900', GOOGL:'#4285f4', MARKET:'#b45309',
 };
 function _symColor(sym) { return _SYM_COLORS[sym] || '#4f5d6e'; }
+
+// Per-category pill colors — bg and text as inline style
+const _CAT_PILL_STYLES = {
+  'Earnings & Revenue':   'background:rgba(16,185,129,0.15);color:#059669;border:1px solid rgba(16,185,129,0.4)',
+  'Analyst Actions':      'background:rgba(99,102,241,0.15);color:#6366f1;border:1px solid rgba(99,102,241,0.4)',
+  'Corporate Events':     'background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.4)',
+  'Regulatory & Legal':   'background:rgba(239,68,68,0.15); color:#dc2626;border:1px solid rgba(239,68,68,0.4)',
+  'Macro Catalysts':      'background:rgba(14,165,233,0.15);color:#0284c7;border:1px solid rgba(14,165,233,0.4)',
+  'Product & Operations': 'background:rgba(168,85,247,0.15);color:#9333ea;border:1px solid rgba(168,85,247,0.4)',
+};
+const _CAT_PILL_FALLBACK = 'background:rgba(100,116,139,0.15);color:#64748b;border:1px solid rgba(100,116,139,0.35)';
+function _catPillStyle(category) {
+  return _CAT_PILL_STYLES[category] || _CAT_PILL_FALLBACK;
+}
+
+// Extract just the background tint from the pill style for use as a subtle header bg
+const _CAT_HDR_BG = {
+  'Earnings & Revenue':   'background:rgba(16,185,129,0.07)',
+  'Analyst Actions':      'background:rgba(99,102,241,0.07)',
+  'Corporate Events':     'background:rgba(245,158,11,0.07)',
+  'Regulatory & Legal':   'background:rgba(239,68,68,0.07)',
+  'Macro Catalysts':      'background:rgba(14,165,233,0.07)',
+  'Product & Operations': 'background:rgba(168,85,247,0.07)',
+};
+function _catHdrStyle(category) {
+  return _CAT_HDR_BG[category] || '';
+}
 
 function _esc(s) {
   return String(s || '')
