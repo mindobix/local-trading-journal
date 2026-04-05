@@ -252,7 +252,8 @@ function updateFilterBarContext(view) {
 
   const isPlan    = view === 'plan';
   const isReports = view === 'reports';
-  const hideChrome = isPlan || isReports;
+  const isNews    = view === 'news';
+  const hideChrome = isPlan || isReports || isNews;
 
   // Hide entire stats bar and filter bar on Trade Plan and Reports
   const statsBar  = document.getElementById('stats-bar');

@@ -38,15 +38,20 @@ function switchView(v) {
   if (typeof _bulkIsActive === 'function' && _bulkIsActive() && !_bulkConfirmLeave()) return;
   if (typeof _bulkCleanup === 'function') _bulkCleanup();
   state.view = v;
+  // Cleanup news polling when leaving news view
+  if (state.view === 'news' && v !== 'news' && typeof cleanupNewsView === 'function') cleanupNewsView();
+
   document.getElementById('view-bulk').style.display    = 'none';
   document.getElementById('view-cal').style.display     = v === 'calendar' ? 'block' : 'none';
   document.getElementById('view-trades').style.display  = v === 'trades'   ? 'block' : 'none';
   document.getElementById('view-plan').style.display    = v === 'plan'     ? 'block' : 'none';
   document.getElementById('view-reports').style.display = v === 'reports'  ? 'block' : 'none';
+  document.getElementById('view-news').style.display    = v === 'news'     ? 'block' : 'none';
   document.getElementById('nav-cal').classList.toggle('active',     v === 'calendar');
   document.getElementById('nav-trades').classList.toggle('active',  v === 'trades');
   document.getElementById('nav-plan').classList.toggle('active',    v === 'plan');
   document.getElementById('nav-reports').classList.toggle('active', v === 'reports');
+  document.getElementById('nav-news').classList.toggle('active',    v === 'news');
   updateFilterBarContext(v);
   if (v === 'trades') {
     if (!state.tradesVisited) {
@@ -59,6 +64,7 @@ function switchView(v) {
   if (v === 'calendar') renderCalendar();
   if (v === 'plan')     initPlanView();
   if (v === 'reports')  initReportsView();
+  if (v === 'news' && typeof initNewsView === 'function') initNewsView();
 }
 
 function openAddGlobal() {
