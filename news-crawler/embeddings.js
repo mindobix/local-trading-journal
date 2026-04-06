@@ -3,7 +3,11 @@
  * Uses Xenova/bge-small-en-v1.5 (33 MB, downloads once on first use).
  * Outperforms all-MiniLM-L6-v2 on semantic similarity benchmarks at similar speed.
  */
-const { pipeline } = require('@xenova/transformers');
+const { pipeline, env } = require('@xenova/transformers');
+
+// Suppress ONNX Runtime "Removing initializer" W: warnings on macOS.
+// logSeverityLevel: 0=verbose 1=info 2=warning 3=error 4=fatal
+env.backends.onnx.logSeverityLevel = 3;
 
 let _embedder = null;
 

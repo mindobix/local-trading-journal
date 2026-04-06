@@ -3,7 +3,10 @@
  * Uses Xenova/distilbart-cnn-6-6 (~200 MB, downloads once on first use).
  * Produces a 2-3 sentence summary from article text.
  */
-const { pipeline } = require('@xenova/transformers');
+const { pipeline, env } = require('@xenova/transformers');
+
+// Suppress ONNX Runtime "Removing initializer" W: warnings on macOS.
+env.backends.onnx.logSeverityLevel = 3;
 
 let _summarizer = null;
 let _loading     = false;
