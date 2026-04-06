@@ -3921,6 +3921,47 @@ input:checked ~ .nws-toggle-track .nws-toggle-thumb { background: #fff; transfor
 .news-sym-tab-llm.active { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* Body layout when LLM tab is active */
+/* Body wrapper — topbar strip + panels row */
+.llm-body-wrap {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+  width: 100%;
+}
+
+/* Persistent LLM quick-launch strip */
+.llm-topbar-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  flex-shrink: 0;
+}
+.llm-topbar-btn {
+  display: inline-block;
+  padding: 5px 16px;
+  border-radius: var(--radius);
+  border: 1px solid;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: opacity 0.13s;
+  white-space: nowrap;
+}
+.llm-topbar-btn:hover { opacity: 0.7; }
+
+/* Panels row */
+.llm-panels {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
 .llm-left-panel {
   width: 290px;
   min-width: 290px;
@@ -4051,21 +4092,7 @@ input:checked ~ .nws-toggle-track .nws-toggle-thumb { background: #fff; transfor
 }
 
 /* Launch buttons */
-.llm-launch-row { display: flex; flex-wrap: wrap; gap: 8px; }
-.llm-launch-btn {
-  display: inline-block;
-  padding: 6px 16px;
-  border-radius: var(--radius);
-  border: 1px solid;
-  background: transparent;
-  font-size: 12px;
-  font-weight: 600;
-  text-decoration: none;
-  cursor: pointer;
-  transition: opacity 0.13s;
-}
-.llm-launch-btn:hover { opacity: 0.75; }
-.llm-copy-hint { font-size: 11px; color: var(--green); min-height: 16px; }
+.llm-copy-hint { font-size: 11px; color: var(--green); }
 
 /* Edit results button */
 .llm-edit-results-btn {

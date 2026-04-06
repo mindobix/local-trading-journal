@@ -495,9 +495,20 @@ function _switchNewsSymbol(sym) {
 function _showLlmBody() {
   const body = document.getElementById('news-body');
   if (!body) return;
+
+  const launchBtns = Object.entries(LLM_URLS).map(([n, url]) =>
+    `<a class="llm-topbar-btn" href="${_esc(url)}" target="_blank" rel="noopener"
+        style="border-color:${_llmColor(n)};color:${_llmColor(n)}">${_esc(n)} ↗</a>`
+  ).join('');
+
   body.innerHTML = `
-    <div class="llm-left-panel" id="llm-left-panel"></div>
-    <div class="llm-right-panel" id="llm-right-panel"></div>`;
+    <div class="llm-body-wrap">
+      <div class="llm-topbar-strip">${launchBtns}</div>
+      <div class="llm-panels">
+        <div class="llm-left-panel" id="llm-left-panel"></div>
+        <div class="llm-right-panel" id="llm-right-panel"></div>
+      </div>
+    </div>`;
   _renderLlmList();
   _renderLlmRight();
 }
@@ -1498,14 +1509,6 @@ function _renderLlmView() {
   const date    = q.createdAt ? new Date(q.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
   const results = _llm.results[q.id] || '';
 
-  // Launch buttons for all 4 main LLMs
-  const launchBtns = Object.entries(LLM_URLS).map(([name, url]) =>
-    `<a class="llm-launch-btn" href="${_esc(url)}" target="_blank" rel="noopener"
-        onclick="_llmCopyPrompt('${_esc(q.id)}')" style="border-color:${_llmColor(name)};color:${_llmColor(name)}">
-       ${_esc(name)} ↗
-     </a>`
-  ).join('');
-
   el.innerHTML = `
     <div class="llm-view-wrap">
       <div class="llm-view-hdr">
@@ -1520,14 +1523,11 @@ function _renderLlmView() {
       </div>
 
       <div class="llm-view-section">
-        <div class="llm-section-label">Prompt</div>
+        <div class="llm-section-label">Prompt
+          <button class="llm-edit-results-btn" onclick="_llmCopyPrompt('${_esc(q.id)}')">Copy prompt</button>
+          <span class="llm-copy-hint" id="llm-copy-hint-${_esc(q.id)}"></span>
+        </div>
         <div class="llm-prompt-box">${_esc(q.prompt)}</div>
-      </div>
-
-      <div class="llm-view-section">
-        <div class="llm-section-label">Launch query in</div>
-        <div class="llm-launch-row">${launchBtns}</div>
-        <div class="llm-copy-hint" id="llm-copy-hint-${_esc(q.id)}"></div>
       </div>
 
       <div class="llm-view-section llm-results-section">
