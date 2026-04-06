@@ -32,6 +32,22 @@ const REPORT_WORKER_PATH = path.join(__dirname, 'report-worker.js');
 // Keyed by symbol. status: 'running' | 'done' | 'error'
 const _reportJobs = new Map();
 
+// ─── Worker / crawl interlock ─────────────────────────────────────────────────
+// While signal workers are running we pause the RSS crawl so they aren't
+// competing for CPU/memory. If a cron tick fires while workers are busy the
+// crawl is recorded as pending and runs automatically when the last worker exits.
+let _activeWorkerCount = 0;
+let _crawlPending      = false;
+
+function _onWorkerDone() {
+  _activeWorkerCount = Math.max(0, _activeWorkerCount - 1);
+  if (_activeWorkerCount === 0 && _crawlPending) {
+    _crawlPending = false;
+    console.log('[Crawl] ▶ All signal workers finished — running deferred crawl now.');
+    runCrawl().catch(err => console.error('[Crawl] Deferred crawl error:', err.message));
+  }
+}
+
 // ─── Stock price cache ────────────────────────────────────────────────────────
 // Keyed by internal symbol. Updated every crawl cycle.
 const _priceCache = {};
@@ -69,44 +85,42 @@ async function fetchPrices(symbols) {
   if (failed.length)  console.warn(`[Prices] Failed: ${failed.join(', ')}`);
 }
 
-const REPORT_COOLDOWN_MS = 20 * 60 * 1000; // don't re-run within 20 min of last trigger
-
-function _runReportWorker(symbol, windowMs) {
+function _runReportWorker(symbol, windowMs, newArticleIds = new Set()) {
   return new Promise(resolve => {
     const job = _reportJobs.get(symbol);
     if (job?.status === 'running') { resolve(); return; }
-    // Cooldown: skip if this symbol was triggered recently
-    if (job?.triggeredAt && Date.now() - job.triggeredAt < REPORT_COOLDOWN_MS) {
-      resolve(); return;
-    }
 
     _reportJobs.set(symbol, { status: 'running', triggeredAt: Date.now() });
-    const child = fork(REPORT_WORKER_PATH, [symbol, String(windowMs)]);
+    _activeWorkerCount++;
+
+    const newIdsArg = JSON.stringify([...newArticleIds]);
+    const child = fork(REPORT_WORKER_PATH, [symbol, String(windowMs), newIdsArg]);
 
     child.on('message', msg => {
       const { triggeredAt } = _reportJobs.get(symbol) || {};
       if (msg.ok) {
         _reportJobs.set(symbol, { status: 'done', report: msg.report, triggeredAt });
-        console.log(`[Report Worker] ${symbol} done.`);
       } else {
         _reportJobs.set(symbol, { status: 'error', error: msg.error, triggeredAt });
-        console.error(`[Report Worker] ${symbol} failed:`, msg.error);
+        console.error(`[Report] ✗ ${symbol} failed: ${msg.error}`);
       }
+      _onWorkerDone();
       resolve();
     });
 
     child.on('error', err => {
       const { triggeredAt } = _reportJobs.get(symbol) || {};
       _reportJobs.set(symbol, { status: 'error', error: err.message, triggeredAt });
-      console.error(`[Report Worker] ${symbol} fork error:`, err.message);
+      console.error(`[Report] ✗ ${symbol} fork error: ${err.message}`);
+      _onWorkerDone();
       resolve();
     });
 
-    // Catch crashes that exit before sending a message
     child.on('exit', code => {
       const job = _reportJobs.get(symbol);
       if (job?.status === 'running') {
         _reportJobs.set(symbol, { status: 'error', error: `Process exited with code ${code}`, triggeredAt: job.triggeredAt });
+        _onWorkerDone();
         resolve();
       }
     });
@@ -254,18 +268,106 @@ async function migrateConfig() {
 // ─── Readability extraction ───────────────────────────────────────────────────
 const FETCH_HEADERS = {
   'User-Agent':      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
-  'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'Accept':          'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
   'Accept-Language': 'en-US,en;q=0.9',
+  'Accept-Encoding': 'gzip, deflate, br',
+  'Cache-Control':   'no-cache',
+  'Pragma':          'no-cache',
 };
 
-// Domains that consistently block scraping — skip Readability entirely.
+// Minimum extracted text length to consider an article "readable".
+// Paywall teasers and bot-check pages typically produce <200 chars.
+const MIN_CONTENT_CHARS = 200;
+
+// Domains that consistently block scraping or return paywalled/JS-rendered content.
+// Adding a domain here causes articles from it to be immediately marked as failed
+// rather than making a network request. Keep sorted alphabetically.
 const BLOCKED_DOMAINS = new Set([
-  'investing.com', 'www.investing.com',
+  'barrons.com',        'www.barrons.com',
+  'bloomberg.com',      'www.bloomberg.com',
+  'ft.com',             'www.ft.com',
+  'investing.com',      'www.investing.com',
+  'seekingalpha.com',   'www.seekingalpha.com',  // paywall + JS-rendered
+  'thestreet.com',      'www.thestreet.com',
+  'wsj.com',            'www.wsj.com',
 ]);
 
 function _isBlocked(url) {
   try { return BLOCKED_DOMAINS.has(new URL(url).hostname); }
   catch { return false; }
+}
+
+// ─── __NEXT_DATA__ fallback extractor ────────────────────────────────────────
+// Yahoo Finance (and other Next.js sites) embed the full article JSON in a
+// <script id="__NEXT_DATA__"> tag. Readability often misses it because the
+// visible DOM only contains a JS-hydration shell. This parser walks the
+// content tree that Yahoo Finance uses for its news articles.
+function _tryNextDataExtract(html) {
+  try {
+    const m = html.match(/<script[^>]+id="__NEXT_DATA__"[^>]*>([\s\S]*?)<\/script>/);
+    if (!m) return null;
+
+    const nd    = JSON.parse(m[1]);
+    const pp    = nd?.props?.pageProps;
+    if (!pp) return null;
+
+    // Yahoo Finance article pages use several possible locations.
+    const art = pp.article ?? pp.data?.article ?? pp.item ?? null;
+    if (!art) return null;
+
+    // Walk the rich-content body tree into plain HTML paragraphs.
+    const bodyNodes = art.body?.content ?? art.content ?? [];
+    const parts     = [];
+
+    function flattenText(nodes) {
+      if (!Array.isArray(nodes)) return typeof nodes === 'string' ? nodes : '';
+      return nodes.map(n => {
+        if (!n) return '';
+        if (typeof n === 'string') return n;
+        if (typeof n.value === 'string') return n.value;
+        // Recurse into content or children
+        const sub = Array.isArray(n.content) ? n.content
+                  : Array.isArray(n.children) ? n.children
+                  : typeof n.content === 'string' ? [n.content]
+                  : [];
+        return flattenText(sub);
+      }).join('');
+    }
+
+    function walk(nodes) {
+      if (!Array.isArray(nodes)) return;
+      for (const n of nodes) {
+        if (!n) continue;
+        const t = (n.type || '').toLowerCase();
+        if (t === 'p' || t === 'paragraph') {
+          const txt = flattenText(n.content ?? n.children ?? []).trim();
+          if (txt) parts.push(`<p>${txt.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`);
+        } else if (t === 'h2' || t === 'h3' || t === 'heading') {
+          const txt = flattenText(n.content ?? n.children ?? []).trim();
+          if (txt) parts.push(`<h3>${txt.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h3>`);
+        } else {
+          walk(n.content ?? n.children ?? []);
+        }
+      }
+    }
+
+    walk(bodyNodes);
+    if (parts.length === 0) return null;
+
+    const content = parts.join('\n');
+    const length  = content.replace(/<[^>]+>/g, '').length;
+    const byline  = (art.authors || []).map(a => a.name ?? a).filter(Boolean).join(', ');
+
+    return {
+      title:         art.title         || '',
+      byline,
+      excerpt:       art.summary        || '',
+      siteName:      'Yahoo Finance',
+      publishedTime: art.pubDate        || art.publishedAt || '',
+      content,
+      length,
+    };
+  } catch { return null; }
 }
 
 async function readableExtract(url) {
@@ -282,23 +384,34 @@ async function readableExtract(url) {
     httpsAgent,
   });
 
-  const dom = new JSDOM(resp.data, { url });
-  const reader = new Readability(dom.window.document, {
-    keepClasses: false,   // strip all class names for cleaner output
-  });
-  const article = reader.parse();
-  if (!article || !article.content) return null;
+  const html = resp.data;
 
-  return {
-    title:         article.title        || '',
-    byline:        article.byline       || '',
-    excerpt:       article.excerpt      || '',
-    siteName:      article.siteName     || '',
-    publishedTime: article.publishedTime || '',
-    content:       article.content,       // cleaned HTML from Readability
-    length:        article.length        || 0,
-    cachedAt:      new Date().toISOString(),
-  };
+  // ── Primary: Readability ──────────────────────────────────────────────────
+  const dom    = new JSDOM(html, { url });
+  const reader = new Readability(dom.window.document, { keepClasses: false });
+  const article = reader.parse();
+
+  if (article && article.content && (article.length || 0) >= MIN_CONTENT_CHARS) {
+    return {
+      title:         article.title         || '',
+      byline:        article.byline        || '',
+      excerpt:       article.excerpt       || '',
+      siteName:      article.siteName      || '',
+      publishedTime: article.publishedTime || '',
+      content:       article.content,
+      length:        article.length        || 0,
+      cachedAt:      new Date().toISOString(),
+    };
+  }
+
+  // ── Fallback: __NEXT_DATA__ (Yahoo Finance, Next.js sites) ───────────────
+  const nd = _tryNextDataExtract(html);
+  if (nd && nd.length >= MIN_CONTENT_CHARS) {
+    console.log(`[Readability] ↩ __NEXT_DATA__ fallback used for ${new URL(url).hostname}`);
+    return { ...nd, cachedAt: new Date().toISOString() };
+  }
+
+  return null;
 }
 
 // ─── Article caching (runs in background after every crawl) ──────────────────
@@ -306,53 +419,97 @@ const CACHE_CONCURRENCY = 4;
 
 async function cacheNewArticles(articles) {
   await fs.mkdir(ARTICLES_DIR, { recursive: true });
+  const now = Date.now();
 
-  // Only process articles not yet cached
-  const uncached = [];
+  const toProcess = [];
   for (const a of articles) {
     const file = path.join(ARTICLES_DIR, `${a.id}.json`);
-    try { await fs.access(file); } catch { uncached.push(a); }
+    try {
+      const data = JSON.parse(await fs.readFile(file, 'utf8'));
+      if (data.fallback) {
+        // Retry transient fallbacks (network errors) once their window passes.
+        // Permanent fallbacks (blocked domains) keep their RSS preview — don't retry.
+        if (data.transient && data.retryAfter && now >= data.retryAfter) toProcess.push(a);
+      } else if ((data.length || 0) < MIN_CONTENT_CHARS) {
+        // Re-process low-quality cached content (paywall teasers, bot pages, etc.)
+        toProcess.push(a);
+      }
+      // Else: good full-content cache — skip
+    } catch {
+      toProcess.push(a); // not yet cached
+    }
   }
 
-  if (uncached.length === 0) return;
-  console.log(`[Readability] Extracting ${uncached.length} new articles...`);
+  if (toProcess.length === 0) return;
+  console.log(`[Readability] Processing ${toProcess.length} articles...`);
 
-  // Process in small concurrent batches to avoid hammering sites
-  for (let i = 0; i < uncached.length; i += CACHE_CONCURRENCY) {
-    const batch = uncached.slice(i, i + CACHE_CONCURRENCY);
+  for (let i = 0; i < toProcess.length; i += CACHE_CONCURRENCY) {
+    const batch = toProcess.slice(i, i + CACHE_CONCURRENCY);
     await Promise.allSettled(batch.map(a => cacheOneArticle(a)));
   }
 
-  console.log(`[Readability] Done caching batch.`);
+  console.log(`[Readability] Done.`);
 }
 
 async function cacheOneArticle(article) {
   const file = path.join(ARTICLES_DIR, `${article.id}.json`);
+
+  // Build a fallback entry from RSS metadata so the reader always has something.
+  function _rssFallback(extra = {}) {
+    const desc = article.description || '';
+    const escaped = desc.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    return {
+      fallback:      true,
+      title:         article.title       || '',
+      byline:        '',
+      excerpt:       desc,
+      siteName:      article.source      || '',
+      publishedTime: article.publishedAt || '',
+      content:       escaped ? `<p>${escaped}</p>` : '',
+      length:        desc.length,
+      cachedAt:      new Date().toISOString(),
+      ...extra,
+    };
+  }
+
   try {
     const data = await readableExtract(article.url);
     if (!data) {
-      console.warn(`[Readability] No content: ${article.title?.slice(0, 60)}`);
-      // Write a sentinel so we don't retry forever
-      await fs.writeFile(file, JSON.stringify({ failed: true, cachedAt: new Date().toISOString() }));
+      console.warn(`[Readability] ✗ Sparse/no content — RSS preview cached: ${article.title?.slice(0, 60)}`);
+      await fs.writeFile(file, JSON.stringify(_rssFallback()));
       return;
     }
     await fs.writeFile(file, JSON.stringify(data));
-    console.log(`[Readability] ✓ ${article.title?.slice(0, 60)}`);
+    console.log(`[Readability] ✓ ${article.title?.slice(0, 60)} (${data.length} chars)`);
   } catch (err) {
     const status = err.response?.status;
-    const permanent = status >= 400 && status < 500;
-    console.warn(`[Readability] ✗ ${article.url?.slice(0, 80)} — ${err.message}`);
-    if (permanent) {
-      // 4xx = client error (blocked, paywalled, gone) — no point retrying
-      await fs.writeFile(file, JSON.stringify({ failed: true, status, cachedAt: new Date().toISOString() }));
+    console.warn(`[Readability] ✗ ${article.url?.slice(0, 80)} — ${status ? `HTTP ${status}` : err.message} — RSS preview cached`);
+    if (status >= 400 && status < 500) {
+      // Blocked / paywalled / gone — store RSS preview permanently, skip future retries
+      await fs.writeFile(file, JSON.stringify(_rssFallback({ status })));
+    } else {
+      // Network / 5xx — store RSS preview now, retry full extraction in 1 hour
+      await fs.writeFile(file, JSON.stringify(_rssFallback({
+        transient:  true,
+        retryAfter: Date.now() + 3_600_000,
+      })));
     }
-    // 5xx / network errors — leave uncached so next crawl retries
   }
 }
 
 // ─── Crawl logic ──────────────────────────────────────────────────────────────
 async function runCrawl() {
-  console.log(`[${new Date().toISOString()}] Starting crawl...`);
+  // Don't crawl while signal workers are running — they're CPU-intensive.
+  // Record the crawl as pending; _onWorkerDone() will fire it when they finish.
+  if (_activeWorkerCount > 0) {
+    if (!_crawlPending) {
+      _crawlPending = true;
+      console.log(`[Crawl] ⏸ Signal analysis in progress (${_activeWorkerCount} worker${_activeWorkerCount !== 1 ? 's' : ''}) — crawl deferred.`);
+    }
+    return;
+  }
+
+  console.log(`[Crawl] ▶ Starting crawl at ${new Date().toLocaleTimeString()}...`);
 
   const config   = await loadConfig();
   const existing = await loadNews();
@@ -382,7 +539,19 @@ async function runCrawl() {
   const newArticles     = fresh.filter(a => !existingIds.has(a.id));
   const affectedSymbols = [...new Set(newArticles.map(a => a.symbol))];
 
-  console.log(`[${new Date().toISOString()}] Crawl done — ${newArticles.length} new, ${articles.length} total`);
+  // Build per-symbol new-article ID sets for incremental report logging.
+  const newIdsBySymbol = {};
+  for (const a of newArticles) {
+    if (!newIdsBySymbol[a.symbol]) newIdsBySymbol[a.symbol] = new Set();
+    newIdsBySymbol[a.symbol].add(a.id);
+  }
+
+  if (newArticles.length > 0) {
+    const breakdown = affectedSymbols.map(s => `${s}:${newIdsBySymbol[s].size}`).join('  ');
+    console.log(`[Crawl] ✓ ${newArticles.length} new articles — ${breakdown} | ${articles.length} total`);
+  } else {
+    console.log(`[Crawl] ✓ No new articles | ${articles.length} total`);
+  }
 
   // Background: extract & cache article content (non-blocking).
   cacheNewArticles(articles).catch(err => console.error('[Readability] Cache error:', err));
@@ -391,12 +560,14 @@ async function runCrawl() {
   const allSymbols = [...new Set([...(config.symbols || []), 'MARKET', 'SPX', 'SPY', 'QQQ'])];
   fetchPrices(allSymbols).catch(err => console.warn('[Prices] Error:', err.message));
 
-  // Auto-trigger signal analysis for every symbol that received new articles.
+  // Auto-trigger signal analysis only for symbols that received new articles.
   if (affectedSymbols.length > 0) {
-    console.log(`[Crawl] New articles for: ${affectedSymbols.join(', ')} — queuing signal analysis`);
+    console.log(`[Crawl] Queuing signal analysis for: ${affectedSymbols.join(', ')}`);
     // Run sequentially so we don't saturate the CPU on a local machine.
     (async () => {
-      for (const sym of affectedSymbols) await _runReportWorker(sym, 4 * 3600 * 1000);
+      for (const sym of affectedSymbols) {
+        await _runReportWorker(sym, 4 * 3600 * 1000, newIdsBySymbol[sym] || new Set());
+      }
     })().catch(err => console.error('[Crawl] Signal analysis error:', err.message));
   }
 
@@ -447,7 +618,28 @@ app.post('/api/news/crawl', async (req, res) => {
 
 app.delete('/api/news', async (req, res) => {
   try {
+    // Clear news articles
     await saveNews({ articles: [], lastUpdated: null, count: 0 });
+
+    // Wipe all signal-pipeline cache directories
+    const cacheDirs = [
+      path.join(DATA_DIR, 'articles'),    // Readability extractions
+      path.join(DATA_DIR, 'embeddings'),  // article embedding vectors
+      path.join(DATA_DIR, 'summaries'),   // LLM summaries
+      path.join(DATA_DIR, 'processed'),   // per-symbol score caches
+      path.join(DATA_DIR, 'reports'),     // generated signal reports
+    ];
+    await Promise.all(cacheDirs.map(async dir => {
+      try {
+        const files = await fs.readdir(dir);
+        await Promise.all(files.map(f => fs.unlink(path.join(dir, f)).catch(() => {})));
+      } catch { /* dir may not exist yet */ }
+    }));
+
+    // Reset in-memory report job state so green dots clear immediately
+    _reportJobs.clear();
+
+    console.log('[Cache] ✓ All caches cleared.');
     res.json({ ok: true });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -472,7 +664,7 @@ app.get('/api/news/article', async (req, res) => {
     const file = path.join(ARTICLES_DIR, `${id}.json`);
     try {
       const data = JSON.parse(await fs.readFile(file, 'utf8'));
-      if (data.failed) return res.status(422).json({ error: 'Article could not be extracted', failed: true });
+      // fallback:true = RSS preview (full extraction failed) — still valid, return 200
       return res.json({ ok: true, cached: true, ...data });
     } catch {
       // Not cached yet
@@ -570,6 +762,19 @@ async function start() {
   await fs.mkdir(ARTICLES_DIR, { recursive: true });
   await fs.mkdir(REPORTS_DIR, { recursive: true });
   await migrateConfig();
+
+  // Pre-populate _reportJobs from any report files that already exist on disk
+  // so green dots appear immediately after a server restart.
+  try {
+    const files = await fs.readdir(REPORTS_DIR);
+    for (const file of files) {
+      if (!file.endsWith('.json')) continue;
+      const sym = file.replace(/\.json$/, '').toUpperCase();
+      if (!_reportJobs.has(sym)) {
+        _reportJobs.set(sym, { status: 'done', triggeredAt: Date.now() });
+      }
+    }
+  } catch { /* reports dir may be empty on first run */ }
 
   // Bind the port first — fail fast if already in use, before doing any crawl work
   await new Promise((resolve, reject) => {

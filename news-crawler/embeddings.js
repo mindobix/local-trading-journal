@@ -1,6 +1,7 @@
 /**
  * Embedding pipeline — sentence similarity scoring and deduplication.
- * Uses Xenova/all-MiniLM-L6-v2 (23 MB, downloads once on first use).
+ * Uses Xenova/bge-small-en-v1.5 (33 MB, downloads once on first use).
+ * Outperforms all-MiniLM-L6-v2 on semantic similarity benchmarks at similar speed.
  */
 const { pipeline } = require('@xenova/transformers');
 
@@ -8,8 +9,8 @@ let _embedder = null;
 
 async function getEmbedder() {
   if (!_embedder) {
-    console.log('[Embeddings] Loading all-MiniLM-L6-v2 (downloads once on first use)...');
-    _embedder = await pipeline('feature-extraction', 'Xenova/all-MiniLM-L6-v2');
+    console.log('[Embeddings] Loading bge-small-en-v1.5 (downloads once on first use)...');
+    _embedder = await pipeline('feature-extraction', 'Xenova/bge-small-en-v1.5');
     console.log('[Embeddings] Model ready.');
   }
   return _embedder;
@@ -24,7 +25,6 @@ async function embed(text) {
 
 // Embed a batch of strings — returns array of Float32Arrays in same order.
 async function embedBatch(texts) {
-  const embedder = await getEmbedder();
   return Promise.all(texts.map(t => embed(t)));
 }
 
@@ -125,9 +125,10 @@ async function buildSignalCache(taxonomy) {
 async function deduplicateArticles(articles, dedupeThreshold = 0.82) {
   if (articles.length === 0) return [];
 
-  // Embed all article texts
-  const texts = articles.map(a => `${a.title} ${a.description || ''}`);
-  const vecs  = await embedBatch(texts);
+  // Reuse pre-computed _vec if present (avoids a second model pass); fall back to embedding.
+  const vecs = await Promise.all(
+    articles.map(a => a._vec ? Promise.resolve(a._vec) : embed(`${a.title} ${a.description || ''}`))
+  );
 
   const used    = new Array(articles.length).fill(false);
   const clusters = [];

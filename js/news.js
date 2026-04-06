@@ -11,6 +11,8 @@ const NEWS_TAXONOMY_LS_KEY = 'ltj_news_taxonomy';
 
 // Tabs that are always present, always first, and cannot be deleted.
 const PINNED_SYMS = ['MARKET', 'SPX', 'SPY', 'QQQ'];
+// Only MARKET gets its own feed section; all others share the ticker feed template.
+const MARKET_ONLY_SYMS = ['MARKET'];
 
 function _lsGetNewsConfig()   { try { return JSON.parse(localStorage.getItem(NEWS_CONFIG_LS_KEY));   } catch { return null; } }
 function _lsGetNewsTaxonomy() { try { return JSON.parse(localStorage.getItem(NEWS_TAXONOMY_LS_KEY)); } catch { return null; } }
@@ -63,6 +65,8 @@ const _news = {
   statusPollTimer:  null,
   taxonomy:         null,
   prices:           {},          // symbol → { price, change, changePct, updatedAt }
+  prevReportIds:    {},          // symbol → Set of article IDs from the prior report (for NEW pill)
+  prevReportGenAt:  {},          // symbol → generatedAt of the prior report
 };
 
 
@@ -106,7 +110,40 @@ async function _loadReport(symbol) {
   if (!symbol) { _news.report = null; _updateReportSignalMap(); _renderReportPanel(); return; }
   try {
     const r = await fetch(`${NEWS_API}/news/report/${encodeURIComponent(symbol)}`);
-    _news.report = r.ok ? await r.json() : null;
+    const incoming = r.ok ? await r.json() : null;
+
+    if (incoming) {
+      const currentGenAt = _news.report?.generatedAt;
+      const incomingGenAt = incoming.generatedAt;
+
+      if (incomingGenAt && incomingGenAt !== currentGenAt) {
+        // Report has changed — snapshot current article IDs as "previous" before replacing
+        const currentIds = (_news.report?.clusters || [])
+          .map(c => c.representative?.id).filter(Boolean);
+
+        if (currentIds.length > 0) {
+          // We have a real previous report — save its IDs and timestamp
+          _news.prevReportIds[symbol]   = new Set(currentIds);
+          _news.prevReportGenAt[symbol] = currentGenAt;
+          try {
+            localStorage.setItem(`ltj_prevRptIds_${symbol}`, JSON.stringify(currentIds));
+            localStorage.setItem(`ltj_prevRptGenAt_${symbol}`, currentGenAt);
+          } catch {}
+        } else if (!_news.prevReportIds[symbol]) {
+          // No in-memory snapshot yet — try to restore from localStorage
+          try {
+            const ids = JSON.parse(localStorage.getItem(`ltj_prevRptIds_${symbol}`) || 'null');
+            const at  = localStorage.getItem(`ltj_prevRptGenAt_${symbol}`);
+            if (ids?.length) {
+              _news.prevReportIds[symbol]   = new Set(ids);
+              _news.prevReportGenAt[symbol] = at;
+            }
+          } catch {}
+        }
+      }
+    }
+
+    _news.report = incoming;
   } catch {
     _news.report = null;
   }
@@ -157,47 +194,41 @@ async function _checkReportStatuses() {
     if (!r.ok) return;
     const statuses = await r.json();   // { TSLA: { status }, SPY: { status }, … }
 
-    let tabsChanged = false;
+    let activeNeedsReload = false;
 
     for (const [sym, { status }] of Object.entries(statuses)) {
       const wasRunning = _news.reportsRunning.has(sym);
       const hadReport  = _news.reportsAvailable.has(sym);
 
       if (status === 'running') {
-        if (!wasRunning) { _news.reportsRunning.add(sym); tabsChanged = true; }
+        _news.reportsRunning.add(sym);
 
       } else if (status === 'done') {
-        const justFinished = wasRunning || !hadReport;
         _news.reportsRunning.delete(sym);
         _news.reportsAvailable.add(sym);
-        if (justFinished) {
-          tabsChanged = true;
-          // Auto-reload report + signal pills if this is the active tab
-          if (sym === _news.activeSymbol) await _loadReport(sym);
-        }
+        // Auto-reload report + signal pills if this is the active tab and it just finished
+        if ((wasRunning || !hadReport) && sym === _news.activeSymbol) activeNeedsReload = true;
 
       } else if (status === 'error') {
-        if (wasRunning) { _news.reportsRunning.delete(sym); tabsChanged = true; }
+        _news.reportsRunning.delete(sym);
       }
     }
 
-    if (tabsChanged) _renderSymbolTabs();
+    // Always re-render tabs so dots reflect current reportsAvailable state
+    _renderSymbolTabs();
+    if (activeNeedsReload) await _loadReport(_news.activeSymbol);
   } catch { /* server offline — silent */ }
 }
 
 function _renderReportPanel() {
-  const el   = document.getElementById('news-report-panel');
-  const body = document.getElementById('news-body');
+  const el = document.getElementById('news-report-panel');
   if (!el) return;
 
   const sym = _news.activeSymbol;
   if (!sym) {
     el.innerHTML = '';
-    body?.classList.remove('signal-visible');
     return;
   }
-
-  body?.classList.add('signal-visible');
 
   const isRunning = _news.reportsRunning.has(sym);
   const report    = _news.report;
@@ -235,17 +266,33 @@ function _renderReportPanel() {
     </div>`;
   })() : '';
 
-  const storiesHTML = (report.clusters || []).slice(0, 5).map(c => {
+  const prevIds = _news.prevReportIds[sym]; // Set of IDs from the prior report
+
+  const storiesHTML = (report.clusters || [])
+    .slice()
+    .sort((a, b) => {
+      const ta = a.representative?.publishedAt || '';
+      const tb = b.representative?.publishedAt || '';
+      return tb > ta ? 1 : tb < ta ? -1 : 0;
+    })
+    .slice(0, 5)
+    .map(c => {
     const rep = c.representative;
     const dupeLabel  = c.duplicates?.length ? `<span class="nrp-dupes">+${c.duplicates.length} similar</span>` : '';
     const score      = rep.score ? `<span class="nrp-score">${Math.round(rep.score * 100)}%</span>` : '';
     const pillsHTML  = (rep.categoryMatches || (rep.matchedCategory ? [{ category: rep.matchedCategory }] : []))
       .map(m => `<span class="nrp-cat-pill" style="${_catPillStyle(m.category)}" title="${_esc(m.signal || '')}">${_esc(m.category)}</span>`)
       .join('');
+    const timeAgo    = rep.publishedAt ? _timeAgo(rep.publishedAt) : '';
+    const isNew      = prevIds?.size > 0 && rep.id && !prevIds.has(rep.id);
+    const newPill    = isNew ? `<span class="nrp-new-pill">NEW</span>` : '';
     return `
-      <div class="nrp-story" onclick="_openArticle('${_esc(rep.id)}')">
+      <div class="nrp-story${isNew ? ' nrp-story-new' : ''}" onclick="_openArticle('${_esc(rep.id)}')">
         <div class="nrp-story-meta">
-          ${score}${dupeLabel}<span class="nrp-story-src">${_esc(rep.source)}</span>
+          ${score}${dupeLabel}
+          ${timeAgo ? `<span class="nrp-story-time">${_esc(timeAgo)}</span>` : ''}
+          ${newPill}
+          <span class="nrp-story-src">${_esc(rep.source)}</span>
         </div>
         <div class="nrp-story-title">${_esc(rep.title)}</div>
         ${pillsHTML ? `<div class="nrp-cat-pills">${pillsHTML}</div>` : ''}
@@ -347,8 +394,7 @@ function renderNewsShell() {
       <div class="news-topbar">
         <div class="news-sym-tabs" id="news-sym-tabs"></div>
         <div class="news-topbar-right">
-          <span class="news-status-dot" id="news-status-dot" title="Connecting..."></span>
-          <span class="news-last-upd"   id="news-last-upd">Connecting…</span>
+          <span class="news-last-upd" id="news-last-upd">Connecting…</span>
           <button class="news-icon-btn" id="news-refresh-btn"
                   onclick="triggerManualCrawl()" title="Crawl now">${_refreshSvg()}</button>
           <button class="news-icon-btn" onclick="openNewsSettings()" title="Configure sources">${_gearSvg()}</button>
@@ -356,12 +402,14 @@ function renderNewsShell() {
       </div>
       <div class="news-body" id="news-body">
         <div class="news-signal-col" id="news-report-panel"></div>
-        <div class="news-feed-col">
-          <div class="news-feed-wrap" id="news-feed-wrap">
-            <div class="news-state-msg">
-              <div class="nsm-icon">⏳</div>
-              <div class="nsm-title">Loading macro news…</div>
-            </div>
+        <div class="nws-feed-right" id="nws-feed-right">
+          <div class="nws-iframe-placeholder">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3">
+              <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/>
+              <line x1="12" y1="17" x2="12" y2="21"/>
+            </svg>
+            <span>Select an article to read</span>
           </div>
         </div>
       </div>
@@ -371,7 +419,7 @@ function renderNewsShell() {
     <div class="nws-overlay" id="nws-overlay" onclick="_nwsOverlayClick(event)">
       <div class="nws-panel" id="nws-panel">
         <div class="nws-hdr">
-          <span class="nws-hdr-title">News Settings</span>
+          <span class="nws-hdr-title">Signal News Settings</span>
           <button class="nws-close-btn" onclick="closeNewsSettings()">&#10005;</button>
         </div>
         <div class="nws-body" id="nws-body"></div>
@@ -407,56 +455,7 @@ function _switchNewsSymbol(sym) {
 
 // ─── FEED ─────────────────────────────────────────────────────────────────────
 function _renderFeed() {
-  const wrap = document.getElementById('news-feed-wrap');
-  if (!wrap) return;
-
-  const articles = _news.articles.filter(a => a.symbol === _news.activeSymbol);
-
-  if (articles.length === 0) {
-    wrap.classList.remove('nws-split-active');
-    wrap.innerHTML = `
-      <div class="news-state-msg">
-        <div class="nsm-icon">📰</div>
-        <div class="nsm-title">No articles found</div>
-        <div class="nsm-sub">
-          ${_news.serverOnline
-            ? 'No articles yet. Click Refresh to crawl now.'
-            : 'Cannot reach the news crawler. Start the server first.'}
-        </div>
-      </div>`;
-    return;
-  }
-
-  const listHTML = `<div class="news-list">${articles.map(_articleCard).join('')}</div>`;
-
-  // If split already rendered, just refresh the left panel in-place (preserves iframe)
-  const leftPanel = document.getElementById('nws-feed-left');
-  if (leftPanel) {
-    leftPanel.innerHTML = listHTML;
-    // Re-apply active highlight
-    if (_news.activeArticleId) {
-      const card = leftPanel.querySelector(`.news-card[data-id="${CSS.escape(_news.activeArticleId)}"]`);
-      if (card) card.classList.add('active');
-    }
-    return;
-  }
-
-  // First render — build split layout
-  wrap.classList.add('nws-split-active');
-  wrap.innerHTML = `
-    <div class="nws-split">
-      <div class="nws-feed-left" id="nws-feed-left">${listHTML}</div>
-      <div class="nws-feed-right" id="nws-feed-right">
-        <div class="nws-iframe-placeholder">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-               stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3">
-            <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/>
-            <line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-          <span>Select an article to read</span>
-        </div>
-      </div>
-    </div>`;
+  // Feed list is hidden; articles are still fetched so _openArticle can look them up.
 }
 
 function _articleCard(a) {
@@ -514,7 +513,9 @@ async function _openArticle(id) {
       _setReaderStatus(right, 'Extracting article…');
       const r2 = await fetch(`${NEWS_API}/news/article?url=${encodeURIComponent(a.url)}`);
       if (r2.ok) data = await r2.json();
+      // 422 from on-demand → data stays null → fallback below
     }
+    // 422 from cache → permanent failure (blocked/paywalled) → skip on-demand, go to fallback
 
     if (data && data.content) {
       right.innerHTML = _readerShell(a, data);
@@ -543,9 +544,16 @@ function _readerShell(a, data) {
     ? `<span title="${_esc(data.publishedTime)}">${ago}</span>`
     : `<span>${ago}</span>`;
 
+  const fallbackBanner = data?.fallback
+    ? `<div class="nwr-preview-banner">
+         Preview only — full article unavailable.
+         <a href="${safeUrl}" target="_blank" rel="noopener">Read on ${_esc(a.source)} ↗</a>
+       </div>`
+    : '';
+
   const bodyHtml = data
     ? (data.content
-        ? `<div class="nwr-article-body">${data.content}</div>`
+        ? `${fallbackBanner}<div class="nwr-article-body">${data.content}</div>`
         : `<div class="nwr-no-content">
              <p>No readable content could be extracted from this article.</p>
              <a href="${safeUrl}" target="_blank" rel="noopener" class="nwr-ext-btn">
@@ -635,13 +643,8 @@ function _renderOffline() {
 
 // ─── STATUS BAR ──────────────────────────────────────────────────────────────
 function _updateStatus() {
-  const dot = document.getElementById('news-status-dot');
   const lbl = document.getElementById('news-last-upd');
 
-  if (dot) {
-    dot.className = 'news-status-dot ' + (_news.serverOnline ? 'online' : 'offline');
-    dot.title = _news.serverOnline ? 'Connected to crawler' : 'Crawler offline';
-  }
   if (lbl) {
     lbl.textContent = _news.lastUpdated
       ? `Updated ${_timeAgo(_news.lastUpdated)}`
@@ -906,17 +909,27 @@ async function _txAddCategory() {
 
 // ─── MAIN SETTINGS HTML ───────────────────────────────────────────────────────
 function _settingsHTML() {
-  const groups = _srcsBySymbol();
-
   return `
     <div class="nws-section">
-      <div class="nws-section-lbl">Symbols &amp; Feeds</div>
-      ${Object.entries(groups).map(([sym, srcs]) => _tickerGroupHTML(sym, srcs)).join('')}
+      <div class="nws-section-lbl">Ticker Symbols</div>
+      ${_symbolChipsHTML()}
       <div class="nws-add-sym-row">
         <input class="nws-inp" id="nws-sym-inp" placeholder="Add symbol (e.g. NVDA)"
                onkeydown="if(event.key==='Enter')_addSymbol()">
         <button class="nws-add-btn" onclick="_addSymbol()">+ Symbol</button>
       </div>
+    </div>
+
+    <div class="nws-section">
+      <div class="nws-section-lbl">Ticker RSS Feeds
+        <span class="nws-section-sub">shared across all tickers · use {SYMBOL} in URLs</span>
+      </div>
+      ${_tickerFeedsHTML()}
+    </div>
+
+    <div class="nws-section">
+      <div class="nws-section-lbl">Market Feeds</div>
+      ${_marketFeedsHTML()}
     </div>
 
     <div class="nws-section">
@@ -934,6 +947,221 @@ function _settingsHTML() {
         <button class="nws-act-btn nws-act-reset" onclick="_resetToDefaults()">Reset to Defaults</button>
       </div>
     </div>`;
+}
+
+// ─── SYMBOL CHIPS (user tickers only) ────────────────────────────────────────
+function _symbolChipsHTML() {
+  const cfg = _news.config || { symbols: [] };
+  const tickerPinned = PINNED_SYMS.filter(s => !MARKET_ONLY_SYMS.includes(s)); // SPX, SPY, QQQ
+  const userSyms = (cfg.symbols || []).filter(s => !PINNED_SYMS.includes(s));
+  const allTickers = [...tickerPinned, ...userSyms];
+  const chips = allTickers.map(s => {
+    const isPinned = PINNED_SYMS.includes(s);
+    return `<span class="nws-sym-chip" style="background:${_symColor(s)}">${_esc(s)}${
+      !isPinned ? `<button class="nws-sym-chip-del" onclick="_removeSymbol('${_esc(s)}')" title="Remove">×</button>` : ''
+    }</span>`;
+  }).join('');
+  return `<div class="nws-sym-chips">${chips || '<span style="color:var(--text-dim);font-size:12px">No user tickers added yet.</span>'}</div>`;
+}
+
+// ─── TICKER FEED TEMPLATE (one shared list for all user tickers) ──────────────
+function _tickerFeedsHTML() {
+  const cfg = _news.config || { symbols: [], sources: [] };
+  const tickerPinned = PINNED_SYMS.filter(s => !MARKET_ONLY_SYMS.includes(s));
+  const userSyms = (cfg.symbols || []).filter(s => !PINNED_SYMS.includes(s));
+  const allTickerSyms = [...tickerPinned, ...userSyms];
+
+  if (allTickerSyms.length === 0)
+    return `<div class="nws-no-feeds">No ticker symbols available.</div>`;
+
+  const refSym = allTickerSyms[0];
+  const tplFeeds = (cfg.sources || []).filter(s => s.symbol === refSym);
+  const isAdding = _news.addingFeedFor === '__ticker__';
+
+  const rows = tplFeeds.map(s => {
+    const tplId = `__tpl__${s.id}`;
+    if (_news.editingId === tplId) return _tickerFeedEditFormHTML(s, refSym);
+    const dim = s.enabled === false ? ' nws-src-row--dim' : '';
+    const displayUrl = s.url.replace(new RegExp(refSym, 'gi'), '{SYMBOL}');
+    return `
+      <div class="nws-src-row${dim}">
+        <label class="nws-toggle">
+          <input type="checkbox" ${s.enabled !== false ? 'checked' : ''}
+                 onchange="_toggleTickerFeedTemplate('${_esc(s.name)}', this.checked)">
+          <span class="nws-toggle-track"><span class="nws-toggle-thumb"></span></span>
+        </label>
+        <div class="nws-src-info">
+          <div class="nws-src-name-row">
+            ${_typeBadge(s.type)}
+            <span class="nws-src-name">${_esc(s.name)}</span>
+          </div>
+          <div class="nws-src-url" title="${_esc(displayUrl)}">${_esc(displayUrl)}</div>
+        </div>
+        <button class="nws-src-edit-btn" onclick="_startEditTickerTemplate('${_esc(tplId)}')" title="Edit">
+          ${_pencilSvg()}
+        </button>
+        <button class="nws-src-del" onclick="_removeTickerFeedTemplate('${_esc(s.name)}')" title="Remove">×</button>
+      </div>`;
+  }).join('');
+
+  return `
+    <div class="nws-sources-list">
+      ${rows || '<div class="nws-no-feeds">No ticker feeds — add one below</div>'}
+    </div>
+    ${isAdding ? _tickerAddFeedFormHTML() : `<button class="nws-add-feed-btn" onclick="_startAddTickerFeed()">+ Add ticker feed</button>`}`;
+}
+
+function _tickerAddFeedFormHTML() {
+  return `
+    <div class="nws-add-feed-form">
+      <div class="nws-src-edit-row">
+        <input class="nws-inp" id="af-tpl-name" placeholder="Name (e.g. Yahoo Finance)">
+        <select class="nws-sel nws-sel-sm" id="af-tpl-type">
+          <option value="rss">RSS</option>
+          <option value="html">HTML</option>
+        </select>
+      </div>
+      <div class="nws-src-edit-row">
+        <input class="nws-inp nws-inp-full" id="af-tpl-url"
+               placeholder="URL with {SYMBOL} e.g. https://feeds.finance.yahoo.com/rss/2.0/headline?s={SYMBOL}">
+      </div>
+      <div class="nws-src-edit-actions">
+        <button class="nws-save-btn" onclick="_commitAddTickerFeed()">Add</button>
+        <button class="nws-cancel-btn" onclick="_cancelAddFeed()">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function _tickerFeedEditFormHTML(s, refSym) {
+  const displayUrl = s.url.replace(new RegExp(refSym, 'gi'), '{SYMBOL}');
+  const typeOpts = [['rss','RSS / Atom'],['html','HTML Scraper']]
+    .map(([v,l]) => `<option value="${v}"${s.type===v?' selected':''}>${l}</option>`).join('');
+  return `
+    <div class="nws-src-edit-box">
+      <div class="nws-src-edit-row">
+        <input class="nws-inp" id="tse-name-${_esc(s.id)}" value="${_esc(s.name)}" placeholder="Source name">
+        <select class="nws-sel nws-sel-sm" id="tse-type-${_esc(s.id)}">${typeOpts}</select>
+      </div>
+      <div class="nws-src-edit-row">
+        <input class="nws-inp nws-inp-full" id="tse-url-${_esc(s.id)}" value="${_esc(displayUrl)}"
+               placeholder="URL with {SYMBOL}">
+      </div>
+      <div class="nws-src-edit-actions">
+        <button class="nws-save-btn" onclick="_saveTickerTemplateEdit('${_esc(s.id)}','${_esc(s.name)}')">Save</button>
+        <button class="nws-cancel-btn" onclick="_cancelEditSource()">Cancel</button>
+      </div>
+    </div>`;
+}
+
+function _startAddTickerFeed() {
+  _news.addingFeedFor = '__ticker__';
+  _news.editingId = null;
+  openNewsSettings();
+}
+
+async function _commitAddTickerFeed() {
+  const name = document.getElementById('af-tpl-name')?.value.trim() || '';
+  const type = document.getElementById('af-tpl-type')?.value || 'rss';
+  const url  = document.getElementById('af-tpl-url')?.value.trim() || '';
+  if (!url) { alert('URL is required.'); return; }
+  const cfg = _news.config;
+  const tickerPinned = PINNED_SYMS.filter(s => !MARKET_ONLY_SYMS.includes(s));
+  const allTickerSyms = [...tickerPinned, ...(cfg.symbols || []).filter(s => !PINNED_SYMS.includes(s))];
+  const autoName = name || _hostLabel(url.replace(/\{SYMBOL\}/gi, 'ticker'));
+  for (const sym of allTickerSyms) {
+    const symUrl = url.replace(/\{SYMBOL\}/gi, sym);
+    cfg.sources.push({
+      id: `custom-${autoName.toLowerCase().replace(/\W+/g,'-')}-${sym.toLowerCase()}-${Date.now()}`,
+      name: autoName, symbol: sym, type, url: symUrl, enabled: true
+    });
+  }
+  _news.addingFeedFor = null;
+  await _saveConfig();
+  openNewsSettings();
+  triggerManualCrawl();
+}
+
+async function _removeTickerFeedTemplate(feedName) {
+  if (!_news.config) return;
+  const tickerPinned = PINNED_SYMS.filter(s => !MARKET_ONLY_SYMS.includes(s));
+  const allTickerSyms = [...tickerPinned, ...(_news.config.symbols || []).filter(s => !PINNED_SYMS.includes(s))];
+  _news.config.sources = _news.config.sources.filter(s =>
+    !(allTickerSyms.includes(s.symbol) && s.name === feedName)
+  );
+  await _saveConfig();
+  openNewsSettings();
+}
+
+async function _toggleTickerFeedTemplate(feedName, enabled) {
+  if (!_news.config) return;
+  const tickerPinned = PINNED_SYMS.filter(s => !MARKET_ONLY_SYMS.includes(s));
+  const allTickerSyms = [...tickerPinned, ...(_news.config.symbols || []).filter(s => !PINNED_SYMS.includes(s))];
+  for (const src of _news.config.sources) {
+    if (allTickerSyms.includes(src.symbol) && src.name === feedName) src.enabled = enabled;
+  }
+  await _saveConfig();
+}
+
+function _startEditTickerTemplate(tplId) {
+  _news.editingId = tplId;
+  openNewsSettings();
+}
+
+async function _saveTickerTemplateEdit(refId, oldName) {
+  const name = document.getElementById(`tse-name-${refId}`)?.value.trim() || '';
+  const type = document.getElementById(`tse-type-${refId}`)?.value || 'rss';
+  const url  = document.getElementById(`tse-url-${refId}`)?.value.trim() || '';
+  if (!url) { alert('URL is required.'); return; }
+  const cfg = _news.config;
+  const tickerPinned = PINNED_SYMS.filter(s => !MARKET_ONLY_SYMS.includes(s));
+  const allTickerSyms = [...tickerPinned, ...(cfg.symbols || []).filter(s => !PINNED_SYMS.includes(s))];
+  for (const src of cfg.sources) {
+    if (allTickerSyms.includes(src.symbol) && src.name === oldName) {
+      src.name = name || _hostLabel(url.replace(/\{SYMBOL\}/gi, src.symbol));
+      src.type = type;
+      src.url  = url.replace(/\{SYMBOL\}/gi, src.symbol);
+    }
+  }
+  _news.editingId = null;
+  await _saveConfig();
+  openNewsSettings();
+}
+
+// ─── MARKET FEEDS (per pinned symbol) ────────────────────────────────────────
+function _marketFeedsHTML() {
+  return MARKET_ONLY_SYMS.map(sym => {
+    const sources = (_news.config?.sources || []).filter(s => s.symbol === sym);
+    const isAdding = _news.addingFeedFor === sym;
+    const placeholder = `https://feeds.finance.yahoo.com/rss/2.0/headline?s=${sym}&region=US&lang=en-US`;
+    return `
+      <div class="nws-market-group">
+        <div class="nws-market-sym-hdr">
+          <span class="nws-ticker-sym" style="background:${_symColor(sym)}">${_esc(sym)}</span>
+          <span class="nws-ticker-meta">${sources.length} feed${sources.length!==1?'s':''}</span>
+        </div>
+        <div class="nws-sources-list">
+          ${sources.map(s => _srcRowHTML(s)).join('') || '<div class="nws-no-feeds">No feeds</div>'}
+        </div>
+        ${isAdding ? `
+          <div class="nws-add-feed-form">
+            <div class="nws-src-edit-row">
+              <input class="nws-inp" id="af-name-${_esc(sym)}" placeholder="Source name">
+              <select class="nws-sel nws-sel-sm" id="af-type-${_esc(sym)}">
+                <option value="rss">RSS</option>
+                <option value="html">HTML</option>
+              </select>
+            </div>
+            <div class="nws-src-edit-row">
+              <input class="nws-inp nws-inp-full" id="af-url-${_esc(sym)}" placeholder="${_esc(placeholder)}">
+            </div>
+            <div class="nws-src-edit-actions">
+              <button class="nws-save-btn" onclick="_commitAddFeed('${_esc(sym)}')">Add</button>
+              <button class="nws-cancel-btn" onclick="_cancelAddFeed()">Cancel</button>
+            </div>
+          </div>` : `
+          <button class="nws-add-feed-btn" onclick="_startAddFeed('${_esc(sym)}')">+ Add feed</button>`}
+      </div>`;
+  }).join('');
 }
 
 // ─── SETTINGS ACTIONS ────────────────────────────────────────────────────────
@@ -1043,11 +1271,22 @@ async function _saveAndCrawl() {
 }
 
 async function _clearNews() {
-  if (!confirm('Clear all cached news articles?')) return;
+  if (!confirm('Clear all cached data?\n\nThis removes news articles, signal reports, embeddings, summaries, and article content. A fresh crawl will run automatically.')) return;
   try {
     await fetch(`${NEWS_API}/news`, { method: 'DELETE' });
-    _news.articles = [];
+    // Reset all client-side state
+    _news.articles      = [];
+    _news.articlesById  = {};
+    _news.report        = null;
+    _news.prevReportIds = {};
+    _news.prevReportGenAt = {};
+    // Clear persisted prev-report state from localStorage
+    Object.keys(localStorage)
+      .filter(k => k.startsWith('ltj_prevRptIds_') || k.startsWith('ltj_prevRptGenAt_'))
+      .forEach(k => localStorage.removeItem(k));
     _renderFeed();
+    _renderReportPanel();
+    _renderSymbolTabs();
     closeNewsSettings();
   } catch (err) { console.error(err); }
 }
