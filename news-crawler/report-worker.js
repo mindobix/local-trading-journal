@@ -8,6 +8,11 @@
  *         process.argv[4] = JSON array of new article IDs (for logging)
  * Sends:  { ok: true, report } | { ok: false, error: string }
  */
+
+// Must be set before onnxruntime-node loads (it reads this at init time).
+// Level 3 = ERROR only — suppresses the "Removing initializer" W: noise.
+process.env.ORT_LOGGING_LEVEL = process.env.ORT_LOGGING_LEVEL || '3';
+
 const { generateReport } = require('./report-gen');
 
 const symbol       = process.argv[2];
