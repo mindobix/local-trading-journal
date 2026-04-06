@@ -1584,7 +1584,7 @@ function _renderLlmForm() {
     </div>`;
 }
 
-// ─── Results editor (inline over right panel) ─────────────────────────────────
+// ─── Results editor (contenteditable — preserves rich text paste) ─────────────
 function _llmEditResults(id) {
   const el = document.getElementById('llm-right-panel');
   if (!el) return;
@@ -1599,16 +1599,43 @@ function _llmEditResults(id) {
         <span class="llm-view-badge" style="background:${color};margin-right:8px">${_esc(name)}</span>
         Edit Results
       </div>
-      <div class="llm-form-field" style="flex:1;display:flex;flex-direction:column">
-        <label class="llm-form-label">Paste HTML or plain text results from the LLM</label>
-        <textarea class="llm-form-textarea llm-results-editor" id="llm-results-ta"
-                  placeholder="Paste your LLM results here (plain text or HTML)…">${_esc(results)}</textarea>
+      <div class="llm-editor-toolbar">
+        <button class="llm-tb-btn" onclick="document.execCommand('bold')"       title="Bold"><b>B</b></button>
+        <button class="llm-tb-btn" onclick="document.execCommand('italic')"     title="Italic"><i>I</i></button>
+        <button class="llm-tb-btn" onclick="document.execCommand('underline')"  title="Underline"><u>U</u></button>
+        <span class="llm-tb-sep"></span>
+        <button class="llm-tb-btn" onclick="document.execCommand('insertUnorderedList')" title="Bullet list">&#8226; List</button>
+        <button class="llm-tb-btn" onclick="document.execCommand('insertOrderedList')"   title="Numbered list">1. List</button>
+        <span class="llm-tb-sep"></span>
+        <button class="llm-tb-btn" onclick="document.execCommand('formatBlock',false,'h3')" title="Heading">H</button>
+        <button class="llm-tb-btn" onclick="document.execCommand('formatBlock',false,'p')"  title="Paragraph">P</button>
+        <span class="llm-tb-sep"></span>
+        <button class="llm-tb-btn llm-tb-clear" onclick="_llmEditorClear()" title="Clear all">&#10005; Clear</button>
       </div>
+      <div class="llm-rich-editor" id="llm-rich-editor" contenteditable="true"
+           data-placeholder="Paste your LLM results here — formatting is preserved…">${results}</div>
       <div class="llm-form-actions">
         <button class="llm-form-save" onclick="_llmCommitResults('${_esc(id)}')">Save Results</button>
         <button class="llm-form-cancel" onclick="_llmCancelResults('${_esc(id)}')">Cancel</button>
       </div>
     </div>`;
+
+  // Focus editor at end
+  const editor = document.getElementById('llm-rich-editor');
+  if (editor) {
+    editor.focus();
+    const range = document.createRange();
+    range.selectNodeContents(editor);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+}
+
+function _llmEditorClear() {
+  const editor = document.getElementById('llm-rich-editor');
+  if (editor) { editor.innerHTML = ''; editor.focus(); }
 }
 
 // ─── Actions ──────────────────────────────────────────────────────────────────
@@ -1679,7 +1706,7 @@ function _llmCancelForm() {
 }
 
 function _llmCommitResults(id) {
-  const html = document.getElementById('llm-results-ta')?.value || '';
+  const html = document.getElementById('llm-rich-editor')?.innerHTML || '';
   _llm.results[id] = html;
   _llmSaveResults(_llm.results);
   _llm.activeQueryId  = id;

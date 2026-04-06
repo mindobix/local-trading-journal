@@ -4143,7 +4143,61 @@ input:checked ~ .nws-toggle-track .nws-toggle-thumb { background: #fff; transfor
   resize: vertical;
   min-height: 100px;
 }
-.llm-results-editor { flex: 1; min-height: 300px; resize: vertical; font-family: monospace; font-size: 12px; }
+/* Rich text editor */
+.llm-editor-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 8px;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius) var(--radius) 0 0;
+  flex-wrap: wrap;
+}
+.llm-tb-btn {
+  padding: 3px 8px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.llm-tb-btn:hover { background: var(--surface2); border-color: var(--border); color: var(--text); }
+.llm-tb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 3px; }
+.llm-tb-clear:hover { color: var(--red); }
+
+.llm-rich-editor {
+  flex: 1;
+  min-height: 320px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 14px 16px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-top: none;
+  border-radius: 0 0 var(--radius) var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.7;
+  word-break: break-word;
+  outline: none;
+}
+.llm-rich-editor:focus { border-color: var(--accent); }
+.llm-rich-editor:empty:before {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  pointer-events: none;
+}
+.llm-rich-editor h1, .llm-rich-editor h2 { font-size: 15px; font-weight: 700; margin-bottom: 8px; }
+.llm-rich-editor h3 { font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+.llm-rich-editor p  { margin-bottom: 8px; }
+.llm-rich-editor ul, .llm-rich-editor ol { padding-left: 20px; margin-bottom: 8px; }
+.llm-rich-editor li { margin-bottom: 4px; }
+.llm-rich-editor b, .llm-rich-editor strong { font-weight: 700; }
+.llm-rich-editor a  { color: var(--accent); }
 .llm-form-select:focus, .llm-form-input:focus, .llm-form-textarea:focus {
   outline: none;
   border-color: var(--accent);
