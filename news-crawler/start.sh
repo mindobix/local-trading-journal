@@ -24,7 +24,7 @@ npm install --silent
 echo "Starting Market News Crawler on http://localhost:$PORT"
 echo "Open http://localhost:$PORT in your browser"
 echo ""
-# Suppress ONNX Runtime C++ warnings (unused initializer noise from model files).
-# Level 3 = ERROR only (0=verbose 1=info 2=warning 3=error 4=fatal).
-export ORT_LOGGING_LEVEL=3
-node server.js
+# On macOS, onnxruntime writes "Removing initializer" W: warnings via NSLog
+# directly to stderr — they bypass all ORT log-level APIs. Filter them at the
+# shell level. The forked report-worker processes inherit this stderr fd too.
+node server.js 2> >(grep -v "CleanUnusedInitializersAndNodeArgs\|Removing initializer.*It is not used by any node" >&2)
