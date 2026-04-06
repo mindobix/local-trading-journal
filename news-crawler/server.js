@@ -137,6 +137,10 @@ const ARTICLES_DIR  = path.join(DATA_DIR, 'articles');
 const REPORTS_DIR   = path.join(DATA_DIR, 'reports');
 const TAXONOMY_FILE = path.join(DATA_DIR, 'signal-taxonomy.json');
 
+// Rolling window for RSS articles and signal analysis.
+// Articles older than this are dropped on every crawl and their caches pruned.
+const ARTICLE_WINDOW_MS = 4 * 3600_000; // 4 hours
+
 // Taxonomy helpers — inlined here so we never require() report-gen.js (and its
 // heavy @xenova/transformers dependency) in the main process. That native ONNX
 // module must only load inside the report worker thread.
@@ -527,13 +531,25 @@ async function runCrawl() {
   const map = new Map((existing.articles || []).map(a => [a.id, a]));
   for (const a of fresh) map.set(a.id, a);
 
-  const cutoff24h = Date.now() - 86_400_000;
+  const cutoff = Date.now() - ARTICLE_WINDOW_MS;
   const articles = [...map.values()]
-    .filter(a => new Date(a.publishedAt).getTime() >= cutoff24h)
+    .filter(a => new Date(a.publishedAt).getTime() >= cutoff)
     .sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
 
   const result = { articles, lastUpdated: new Date().toISOString(), count: articles.length };
   await saveNews(result);
+
+  // Prune cache files for articles that aged out of the window.
+  const keptIds   = new Set(articles.map(a => a.id));
+  const expiredIds = [...existingIds].filter(id => !keptIds.has(id));
+  if (expiredIds.length > 0) {
+    console.log(`[Crawl] Pruning ${expiredIds.length} expired article${expiredIds.length !== 1 ? 's' : ''} from cache.`);
+    await Promise.allSettled(expiredIds.flatMap(id => [
+      fs.unlink(path.join(ARTICLES_DIR,              `${id}.json`)).catch(() => {}),
+      fs.unlink(path.join(DATA_DIR, 'embeddings',    `${id}.json`)).catch(() => {}),
+      fs.unlink(path.join(DATA_DIR, 'summaries',     `${id}.txt` )).catch(() => {}),
+    ]));
+  }
 
   // Determine which symbols received new articles this run.
   const newArticles     = fresh.filter(a => !existingIds.has(a.id));
@@ -566,7 +582,7 @@ async function runCrawl() {
     // Run sequentially so we don't saturate the CPU on a local machine.
     (async () => {
       for (const sym of affectedSymbols) {
-        await _runReportWorker(sym, 4 * 3600 * 1000, newIdsBySymbol[sym] || new Set());
+        await _runReportWorker(sym, ARTICLE_WINDOW_MS, newIdsBySymbol[sym] || new Set());
       }
     })().catch(err => console.error('[Crawl] Signal analysis error:', err.message));
   }
@@ -722,7 +738,7 @@ app.get('/api/news/report/:symbol', async (req, res) => {
 // POST /api/news/report/:symbol — spawn worker (returns immediately)
 app.post('/api/news/report/:symbol', (req, res) => {
   const symbol   = req.params.symbol;
-  const windowMs = parseInt(req.query.window || '14400000'); // default 4h
+  const windowMs = parseInt(req.query.window) || ARTICLE_WINDOW_MS;
   if (_reportJobs.get(symbol)?.status === 'running') {
     return res.json({ ok: true, status: 'running' });
   }
@@ -751,7 +767,7 @@ app.post('/api/news/reports/generate', async (_req, res) => {
   const config = await loadConfig();
   res.json({ ok: true, message: 'Report generation queued' });
   const symbols = [...(config.symbols || []), 'MARKET'];
-  for (const sym of symbols) await _runReportWorker(sym, 4 * 3600 * 1000);
+  for (const sym of symbols) await _runReportWorker(sym, ARTICLE_WINDOW_MS);
 });
 
 app.get('/api/ping', (_, res) => res.json({ ok: true, ts: new Date().toISOString() }));
