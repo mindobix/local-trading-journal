@@ -8,6 +8,8 @@ const NEWS_POLL = 30000; // 30s UI poll interval
 // ─── localStorage keys ────────────────────────────────────────────────────────
 const NEWS_CONFIG_LS_KEY   = 'ltj_news_config';
 const NEWS_TAXONOMY_LS_KEY = 'ltj_news_taxonomy';
+const LLM_QUERIES_LS_KEY   = 'ltj_llm_queries';   // [{ id, llm, llmOther, prompt, createdAt }]
+const LLM_RESULTS_LS_KEY   = 'ltj_llm_results';   // { [id]: htmlString } — NOT in backup
 
 // Tabs that are always present, always first, and cannot be deleted.
 const PINNED_SYMS = ['MARKET', 'SPX', 'SPY', 'QQQ'];
@@ -19,9 +21,25 @@ function _lsGetNewsTaxonomy() { try { return JSON.parse(localStorage.getItem(NEW
 function _lsSaveNewsConfig(cfg)  { try { localStorage.setItem(NEWS_CONFIG_LS_KEY,   JSON.stringify(cfg));  } catch {} }
 function _lsSaveNewsTaxonomy(tx) { try { localStorage.setItem(NEWS_TAXONOMY_LS_KEY, JSON.stringify(tx));   } catch {} }
 
+// ─── LLM query storage ────────────────────────────────────────────────────────
+function _llmLoadQueries()  { try { return JSON.parse(localStorage.getItem(LLM_QUERIES_LS_KEY)) || []; } catch { return []; } }
+function _llmLoadResults()  { try { return JSON.parse(localStorage.getItem(LLM_RESULTS_LS_KEY)) || {}; } catch { return {}; } }
+function _llmSaveQueries(q) { try { localStorage.setItem(LLM_QUERIES_LS_KEY, JSON.stringify(q)); } catch {} }
+function _llmSaveResults(r) { try { localStorage.setItem(LLM_RESULTS_LS_KEY, JSON.stringify(r)); } catch {} }
+
 // ─── Public helpers for backup/restore ───────────────────────────────────────
 function getNewsConfigForBackup()   { return _news.config   || _lsGetNewsConfig();   }
 function getTaxonomyForBackup()     { return _news.taxonomy || _lsGetNewsTaxonomy(); }
+function getLlmQueriesForBackup()   { return _llm.queries; }  // prompts only — results excluded
+function restoreLlmQueries(queries) {
+  if (!Array.isArray(queries)) return;
+  // Merge by id — backup wins on conflict
+  const map = new Map(_llm.queries.map(q => [q.id, q]));
+  for (const q of queries) map.set(q.id, q);
+  _llm.queries = [...map.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  _llmSaveQueries(_llm.queries);
+  if (_llm.activeTab === 'llm') _renderLlmPanel();
+}
 
 async function restoreNewsConfig(cfg) {
   if (!cfg) return;
@@ -67,11 +85,24 @@ const _news = {
   prices:           {},          // symbol → { price, change, changePct, updatedAt }
   prevReportIds:    {},          // symbol → Set of article IDs from the prior report (for NEW pill)
   prevReportGenAt:  {},          // symbol → generatedAt of the prior report
+  activeTab:        'signal',    // 'signal' | 'llm'
+};
+
+// ─── LLM News state ───────────────────────────────────────────────────────────
+const _llm = {
+  queries:         [],   // loaded from localStorage on init
+  results:         {},   // { [id]: htmlString } — in localStorage, not in backup
+  activeQueryId:   null, // currently selected query in left panel
+  editingQueryId:  null, // null = view mode, 'new' = new form, id = editing existing
 };
 
 
 // ─── PUBLIC: called from switchView('news') ───────────────────────────────────
 async function initNewsView() {
+  // Load LLM data from localStorage before rendering shell
+  _llm.queries = _llmLoadQueries();
+  _llm.results = _llmLoadResults();
+
   renderNewsShell();
   await Promise.all([loadNewsConfig(), loadNews(), _loadTaxonomy()]);
   _loadReport(_news.activeSymbol);
@@ -400,19 +431,7 @@ function renderNewsShell() {
           <button class="news-icon-btn" onclick="openNewsSettings()" title="Configure sources">${_gearSvg()}</button>
         </div>
       </div>
-      <div class="news-body" id="news-body">
-        <div class="news-signal-col" id="news-report-panel"></div>
-        <div class="nws-feed-right" id="nws-feed-right">
-          <div class="nws-iframe-placeholder">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-                 stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3">
-              <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/>
-              <line x1="12" y1="17" x2="12" y2="21"/>
-            </svg>
-            <span>Select an article to read</span>
-          </div>
-        </div>
-      </div>
+      <div class="news-body" id="news-body"></div>
     </div>
 
     <!-- ── Settings panel ── -->
@@ -425,6 +444,10 @@ function renderNewsShell() {
         <div class="nws-body" id="nws-body"></div>
       </div>
     </div>`;
+
+  // Render the initial body based on which tab was last active
+  if (_news.activeTab === 'llm') _showLlmBody();
+  else _showSignalBody();
 }
 
 // ─── SYMBOL TABS ──────────────────────────────────────────────────────────────
@@ -433,23 +456,68 @@ function _renderSymbolTabs() {
   if (!el) return;
   const userSyms = (_news.config?.symbols || []).filter(s => !PINNED_SYMS.includes(s));
   const syms = [...PINNED_SYMS, ...userSyms];
-  el.innerHTML = syms.map(s => {
+
+  // LLM News tab — always first, special styling
+  const llmActive = _news.activeTab === 'llm';
+  const llmTab = `<button class="news-sym-tab news-sym-tab-llm${llmActive ? ' active' : ''}"
+    onclick="_switchToLlmTab()">🤖 LLM News</button>`;
+
+  const signalTabs = syms.map(s => {
+    if (llmActive) return `<button class="news-sym-tab" onclick="_switchNewsSymbol('${_esc(s)}')">${_esc(s)}</button>`;
     const isRunning = _news.reportsRunning.has(s);
     const hasReport = _news.reportsAvailable.has(s);
     const dot = isRunning ? '<span class="nst-dot nst-dot-running"></span>'
               : hasReport ? '<span class="nst-dot"></span>'
               : '';
-    return `<button class="news-sym-tab${s === _news.activeSymbol ? ' active' : ''}"
+    return `<button class="news-sym-tab${s === _news.activeSymbol && !llmActive ? ' active' : ''}"
              onclick="_switchNewsSymbol('${_esc(s)}')">${dot}${_esc(s)}</button>`;
   }).join('');
+
+  el.innerHTML = llmTab + signalTabs;
+}
+
+function _switchToLlmTab() {
+  _news.activeTab = 'llm';
+  _renderSymbolTabs();
+  _showLlmBody();
 }
 
 function _switchNewsSymbol(sym) {
+  _news.activeTab   = 'signal';
   _news.activeSymbol = sym;
   _news.report = null;
   _renderSymbolTabs();
+  _showSignalBody();
   loadNews();
   _loadReport(sym);
+}
+
+function _showLlmBody() {
+  const body = document.getElementById('news-body');
+  if (!body) return;
+  body.innerHTML = `
+    <div class="llm-left-panel" id="llm-left-panel"></div>
+    <div class="llm-right-panel" id="llm-right-panel"></div>`;
+  _renderLlmList();
+  _renderLlmRight();
+}
+
+function _showSignalBody() {
+  const body = document.getElementById('news-body');
+  if (!body) return;
+  body.innerHTML = `
+    <div class="news-signal-col" id="news-report-panel"></div>
+    <div class="nws-feed-right" id="nws-feed-right">
+      <div class="nws-iframe-placeholder">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.3">
+          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/>
+          <line x1="12" y1="17" x2="12" y2="21"/>
+        </svg>
+        <span>Select an article to read</span>
+      </div>
+    </div>`;
+  _renderReportPanel();
 }
 
 
@@ -1341,6 +1409,304 @@ async function _resetToDefaults() {
     console.error('Reset error:', err);
     alert('Could not reset — is the crawler server running?');
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// ─── LLM NEWS PANEL ──────────────────────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════════════
+
+const LLM_TYPES = ['Grok', 'ChatGPT', 'Gemini', 'Claude', 'Other'];
+
+// Base URLs — we open these and copy the prompt to clipboard (most don't accept URL params)
+const LLM_URLS = {
+  Grok:    'https://x.com/i/grok',
+  ChatGPT: 'https://chatgpt.com/',
+  Gemini:  'https://gemini.google.com/app',
+  Claude:  'https://claude.ai/new',
+};
+
+const LLM_COLORS = {
+  Grok:    '#1d9bf0',
+  ChatGPT: '#10a37f',
+  Gemini:  '#4285f4',
+  Claude:  '#d97706',
+  Other:   '#7c3aed',
+};
+
+function _llmDisplayName(q) {
+  return q.llm === 'Other' && q.llmOther ? q.llmOther : q.llm;
+}
+
+function _llmColor(llm) { return LLM_COLORS[llm] || LLM_COLORS.Other; }
+
+// ─── Left panel — query list ──────────────────────────────────────────────────
+function _renderLlmList() {
+  const el = document.getElementById('llm-left-panel');
+  if (!el) return;
+
+  const items = _llm.queries.map(q => {
+    const name   = _llmDisplayName(q);
+    const color  = _llmColor(q.llm);
+    const date   = q.createdAt ? new Date(q.createdAt).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+    const prompt = q.prompt ? q.prompt.slice(0, 80) + (q.prompt.length > 80 ? '…' : '') : '';
+    const active = _llm.activeQueryId === q.id;
+    return `
+      <div class="llm-query-row${active ? ' active' : ''}" onclick="_llmSelectQuery('${_esc(q.id)}')">
+        <div class="llm-qrow-top">
+          <span class="llm-qrow-badge" style="background:${color}">${_esc(name)}</span>
+          <span class="llm-qrow-date">${_esc(date)}</span>
+        </div>
+        <div class="llm-qrow-prompt">${_esc(prompt)}</div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="llm-list-hdr">
+      <span class="llm-list-title">LLM Queries</span>
+      <button class="llm-new-btn" onclick="_llmNewQuery()">+ New</button>
+    </div>
+    <div class="llm-list-body">
+      ${items || '<div class="llm-empty-list">No queries yet.<br>Tap + New to add one.</div>'}
+    </div>`;
+}
+
+// ─── Right panel router ───────────────────────────────────────────────────────
+function _renderLlmRight() {
+  if (_llm.editingQueryId !== null) {
+    _renderLlmForm();
+  } else if (_llm.activeQueryId) {
+    _renderLlmView();
+  } else {
+    const el = document.getElementById('llm-right-panel');
+    if (el) el.innerHTML = `
+      <div class="llm-placeholder">
+        <span style="font-size:32px">🤖</span>
+        <div>Select a query to view, or tap <strong>+ New</strong> to add one.</div>
+      </div>`;
+  }
+}
+
+// ─── View mode ────────────────────────────────────────────────────────────────
+function _renderLlmView() {
+  const el = document.getElementById('llm-right-panel');
+  if (!el) return;
+  const q = _llm.queries.find(x => x.id === _llm.activeQueryId);
+  if (!q) return;
+
+  const name    = _llmDisplayName(q);
+  const color   = _llmColor(q.llm);
+  const date    = q.createdAt ? new Date(q.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+  const results = _llm.results[q.id] || '';
+
+  // Launch buttons for all 4 main LLMs
+  const launchBtns = Object.entries(LLM_URLS).map(([name, url]) =>
+    `<a class="llm-launch-btn" href="${_esc(url)}" target="_blank" rel="noopener"
+        onclick="_llmCopyPrompt('${_esc(q.id)}')" style="border-color:${_llmColor(name)};color:${_llmColor(name)}">
+       ${_esc(name)} ↗
+     </a>`
+  ).join('');
+
+  el.innerHTML = `
+    <div class="llm-view-wrap">
+      <div class="llm-view-hdr">
+        <div class="llm-view-hdr-left">
+          <span class="llm-view-badge" style="background:${color}">${_esc(name)}</span>
+          <span class="llm-view-date">${_esc(date)}</span>
+        </div>
+        <div class="llm-view-actions">
+          <button class="llm-act-btn" onclick="_llmEditQuery('${_esc(q.id)}')">Edit</button>
+          <button class="llm-act-btn llm-act-del" onclick="_llmDeleteQuery('${_esc(q.id)}')">Delete</button>
+        </div>
+      </div>
+
+      <div class="llm-view-section">
+        <div class="llm-section-label">Prompt</div>
+        <div class="llm-prompt-box">${_esc(q.prompt)}</div>
+      </div>
+
+      <div class="llm-view-section">
+        <div class="llm-section-label">Launch query in</div>
+        <div class="llm-launch-row">${launchBtns}</div>
+        <div class="llm-copy-hint" id="llm-copy-hint-${_esc(q.id)}"></div>
+      </div>
+
+      <div class="llm-view-section llm-results-section">
+        <div class="llm-section-label">Results
+          <button class="llm-edit-results-btn" onclick="_llmEditResults('${_esc(q.id)}')">Edit results</button>
+        </div>
+        <div class="llm-results-display" id="llm-results-display-${_esc(q.id)}">
+          ${results ? results : '<span class="llm-no-results">No results pasted yet. Tap "Edit results" to add.</span>'}
+        </div>
+      </div>
+    </div>`;
+}
+
+// ─── Add/Edit form ────────────────────────────────────────────────────────────
+function _renderLlmForm() {
+  const el = document.getElementById('llm-right-panel');
+  if (!el) return;
+  const isNew = _llm.editingQueryId === 'new';
+  const q     = isNew ? null : _llm.queries.find(x => x.id === _llm.editingQueryId);
+
+  const currentLlm  = q?.llm  || 'ChatGPT';
+  const currentOther = q?.llmOther || '';
+  const currentPrompt = q?.prompt || '';
+
+  const llmOptions = LLM_TYPES.map(t =>
+    `<option value="${t}"${t === currentLlm ? ' selected' : ''}>${t}</option>`
+  ).join('');
+
+  el.innerHTML = `
+    <div class="llm-form-wrap">
+      <div class="llm-form-hdr">${isNew ? 'New LLM Query' : 'Edit Query'}</div>
+
+      <div class="llm-form-field">
+        <label class="llm-form-label">LLM</label>
+        <div class="llm-form-llm-row">
+          <select class="llm-form-select" id="llm-f-type" onchange="_llmToggleOther()">
+            ${llmOptions}
+          </select>
+          <input class="llm-form-input" id="llm-f-other" placeholder="Specify LLM name…"
+                 value="${_esc(currentOther)}"
+                 style="display:${currentLlm === 'Other' ? 'block' : 'none'}">
+        </div>
+      </div>
+
+      <div class="llm-form-field">
+        <label class="llm-form-label">Prompt</label>
+        <textarea class="llm-form-textarea" id="llm-f-prompt" placeholder="Paste the prompt you used…" rows="5">${_esc(currentPrompt)}</textarea>
+      </div>
+
+      <div class="llm-form-actions">
+        <button class="llm-form-save" onclick="_llmSaveForm('${isNew ? 'new' : _esc(q.id)}')">Save</button>
+        <button class="llm-form-cancel" onclick="_llmCancelForm()">Cancel</button>
+      </div>
+    </div>`;
+}
+
+// ─── Results editor (inline over right panel) ─────────────────────────────────
+function _llmEditResults(id) {
+  const el = document.getElementById('llm-right-panel');
+  if (!el) return;
+  const q       = _llm.queries.find(x => x.id === id);
+  const results = _llm.results[id] || '';
+  const name    = q ? _llmDisplayName(q) : '';
+  const color   = q ? _llmColor(q.llm) : '#888';
+
+  el.innerHTML = `
+    <div class="llm-form-wrap">
+      <div class="llm-form-hdr">
+        <span class="llm-view-badge" style="background:${color};margin-right:8px">${_esc(name)}</span>
+        Edit Results
+      </div>
+      <div class="llm-form-field" style="flex:1;display:flex;flex-direction:column">
+        <label class="llm-form-label">Paste HTML or plain text results from the LLM</label>
+        <textarea class="llm-form-textarea llm-results-editor" id="llm-results-ta"
+                  placeholder="Paste your LLM results here (plain text or HTML)…">${_esc(results)}</textarea>
+      </div>
+      <div class="llm-form-actions">
+        <button class="llm-form-save" onclick="_llmCommitResults('${_esc(id)}')">Save Results</button>
+        <button class="llm-form-cancel" onclick="_llmCancelResults('${_esc(id)}')">Cancel</button>
+      </div>
+    </div>`;
+}
+
+// ─── Actions ──────────────────────────────────────────────────────────────────
+function _llmNewQuery() {
+  _llm.editingQueryId = 'new';
+  _renderLlmRight();
+}
+
+function _llmSelectQuery(id) {
+  _llm.activeQueryId  = id;
+  _llm.editingQueryId = null;
+  _renderLlmList();
+  _renderLlmRight();
+}
+
+function _llmEditQuery(id) {
+  _llm.editingQueryId = id;
+  _renderLlmRight();
+}
+
+function _llmDeleteQuery(id) {
+  const q = _llm.queries.find(x => x.id === id);
+  if (!confirm(`Delete this ${q ? _llmDisplayName(q) : ''} query?`)) return;
+  _llm.queries = _llm.queries.filter(x => x.id !== id);
+  delete _llm.results[id];
+  _llmSaveQueries(_llm.queries);
+  _llmSaveResults(_llm.results);
+  if (_llm.activeQueryId === id) _llm.activeQueryId = _llm.queries[0]?.id || null;
+  _llm.editingQueryId = null;
+  _renderLlmList();
+  _renderLlmRight();
+}
+
+function _llmToggleOther() {
+  const sel = document.getElementById('llm-f-type');
+  const inp = document.getElementById('llm-f-other');
+  if (sel && inp) inp.style.display = sel.value === 'Other' ? 'block' : 'none';
+}
+
+function _llmSaveForm(idOrNew) {
+  const llm    = document.getElementById('llm-f-type')?.value || 'ChatGPT';
+  const other  = document.getElementById('llm-f-other')?.value.trim() || '';
+  const prompt = document.getElementById('llm-f-prompt')?.value.trim() || '';
+  if (!prompt) { alert('Please enter a prompt.'); return; }
+
+  if (idOrNew === 'new') {
+    const entry = {
+      id:        'llm_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
+      llm, llmOther: other, prompt,
+      createdAt: new Date().toISOString(),
+    };
+    _llm.queries.unshift(entry);
+    _llm.activeQueryId = entry.id;
+  } else {
+    const q = _llm.queries.find(x => x.id === idOrNew);
+    if (q) { q.llm = llm; q.llmOther = other; q.prompt = prompt; }
+  }
+
+  _llm.editingQueryId = null;
+  _llmSaveQueries(_llm.queries);
+  _renderLlmList();
+  _renderLlmRight();
+}
+
+function _llmCancelForm() {
+  _llm.editingQueryId = null;
+  _renderLlmRight();
+}
+
+function _llmCommitResults(id) {
+  const html = document.getElementById('llm-results-ta')?.value || '';
+  _llm.results[id] = html;
+  _llmSaveResults(_llm.results);
+  _llm.activeQueryId  = id;
+  _llm.editingQueryId = null;
+  _renderLlmView();
+}
+
+function _llmCancelResults(id) {
+  _llm.activeQueryId  = id;
+  _llm.editingQueryId = null;
+  _renderLlmView();
+}
+
+function _llmCopyPrompt(id) {
+  const q = _llm.queries.find(x => x.id === id);
+  if (!q?.prompt) return;
+  navigator.clipboard.writeText(q.prompt).then(() => {
+    const hint = document.getElementById(`llm-copy-hint-${id}`);
+    if (hint) { hint.textContent = '✓ Prompt copied to clipboard'; setTimeout(() => { hint.textContent = ''; }, 2500); }
+  }).catch(() => {});
+}
+
+// Called by _renderLlmPanel (used in restoreLlmQueries)
+function _renderLlmPanel() {
+  if (_news.activeTab !== 'llm') return;
+  _renderLlmList();
+  _renderLlmRight();
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────

@@ -274,7 +274,7 @@ function closeImportErrors() {
 
 function backupData() {
   const backup = {
-    version:    5,  // v5: includes newsConfig and newsTaxonomy
+    version:    6,  // v6: includes llmQueries (prompts only, not results)
     exportedAt: new Date().toISOString(),
     trades:       load(),
     tags:         loadTags(),
@@ -284,6 +284,7 @@ function backupData() {
     ideas:        loadIdeas(),
     newsConfig:   typeof getNewsConfigForBackup   === 'function' ? getNewsConfigForBackup()   : null,
     newsTaxonomy: typeof getTaxonomyForBackup     === 'function' ? getTaxonomyForBackup()     : null,
+    llmQueries:   typeof getLlmQueriesForBackup   === 'function' ? getLlmQueriesForBackup()   : null,
   };
   const json  = JSON.stringify(backup, null, 2);
   const blob  = new Blob([json], { type: 'application/json' });
@@ -407,6 +408,7 @@ function restoreData(event) {
     // Restore news settings (replace, not merge — they're whole config objects)
     let restoredNewsConfig   = false;
     let restoredNewsTaxonomy = false;
+    let restoredLlmQueries   = false;
     if (incoming.newsConfig && typeof restoreNewsConfig === 'function') {
       await restoreNewsConfig(incoming.newsConfig);
       restoredNewsConfig = true;
@@ -414,6 +416,10 @@ function restoreData(event) {
     if (incoming.newsTaxonomy && typeof restoreNewsTaxonomy === 'function') {
       await restoreNewsTaxonomy(incoming.newsTaxonomy);
       restoredNewsTaxonomy = true;
+    }
+    if (incoming.llmQueries && typeof restoreLlmQueries === 'function') {
+      restoreLlmQueries(incoming.llmQueries);
+      restoredLlmQueries = true;
     }
 
     event.target.value = '';
@@ -439,6 +445,7 @@ function restoreData(event) {
     if (updatedIdeas  > 0) parts.push(`${updatedIdeas} trade plan idea${updatedIdeas !== 1 ? 's' : ''} updated`);
     if (restoredNewsConfig)   parts.push('news sources restored');
     if (restoredNewsTaxonomy) parts.push('signal taxonomy restored');
+    if (restoredLlmQueries)   parts.push('LLM queries restored');
     if (parts.length === 0) parts.push('nothing new');
 
     showImportSuccess(parts.join(', ') + ' restored.');
