@@ -3,7 +3,7 @@
 
 **Stop paying $25–50/month for a trading journal.** Local Trading Journal is a full-featured, privacy-first trading journal that runs entirely in your browser — no subscription, no account, no data leaving your machine.
 
-Now includes a **Signal News** tab — a live market intelligence feed with AI-powered signal analysis, real-time stock prices, and RSS news aggregation running on a local background server.
+Now includes a **Signal News** tab — a live market intelligence feed with AI-powered signal analysis, real-time stock prices, and RSS news aggregation running on a local background server — plus an **LLM News** tab for tracking and organizing AI-generated market analysis from ChatGPT, Grok, Gemini, Claude, or any other LLM.
 
 ---
 
@@ -79,7 +79,26 @@ Filter any view by date range, symbol, tags, mistakes, rules, trade type, and mo
 
 ### CSV Import & JSON Backup
 - Import trades in bulk from a CSV file (broker export or manual entry)
-- Full JSON backup/restore — export everything (trades, tags, rules, plans, ideas) and restore it to any browser
+- Full JSON backup/restore — export everything (trades, tags, rules, plans, ideas, LLM queries) and restore it to any browser
+
+---
+
+### LLM News Tab
+
+A personal log for AI-generated market analysis. Use your favourite LLM (ChatGPT, Grok, Gemini, Claude, or any other) to research the market, then save the prompt and results here for future reference.
+
+**Quick-launch strip** — Grok, ChatGPT, Gemini, and Claude buttons are always visible at the top of the tab. One tap opens the LLM in a new browser tab.
+
+**Query list** — left panel shows all saved queries with LLM badge (color-coded), date/time, and a prompt preview.
+
+**Query view** — tap any query to see:
+- Full prompt with a **Copy prompt** button
+- Rich text results panel — paste output directly from the LLM, formatting preserved (bold, headings, bullet lists, etc.)
+- Edit / Delete actions
+
+**Rich text editor** — contenteditable editor with a formatting toolbar (Bold, Italic, Underline, bullet/numbered lists, Heading, Paragraph). Paste from any LLM and the formatting comes through intact.
+
+**Storage** — prompts are saved to `localStorage` and included in the JSON backup/restore. Results are stored locally only and not exported (they can be large).
 
 ---
 
@@ -112,6 +131,10 @@ All heavy work is cached so re-runs only process what's new:
 | Summaries | `data/summaries/{id}.txt` | LLM-generated cluster summaries |
 | Reports | `data/reports/{symbol}.json` | Latest signal report per symbol |
 | Article content | `data/articles/{id}.json` | Readability-extracted full text (or RSS preview fallback) |
+
+**Rolling 4-hour window**
+
+Articles older than 4 hours are automatically dropped on every crawl cycle. Their embedding, summary, and article cache files are pruned at the same time, keeping `data/` lean. The signal analysis window matches the RSS retention window — both controlled by a single `ARTICLE_WINDOW_MS` constant.
 
 **Crawl / signal worker interlock**
 
@@ -202,6 +225,11 @@ All trade data lives in your browser's `localStorage`. Nothing is transmitted an
 
 Signal News data is stored locally under `news-crawler/data/` and is never sent to any external service.
 
+| Key | Contents | In backup? |
+|-----|----------|-----------|
+| `ltj_llm_queries` | LLM query prompts | Yes |
+| `ltj_llm_results` | LLM result HTML | No (local only) |
+
 Use **Backup** in the header to export a full JSON snapshot. Use **Restore** to load it back into any browser. Data does not sync between devices — keep your backup file safe.
 
 ---
@@ -284,7 +312,7 @@ local-trading-journal/
 │   └── styles.css          # Dark theme
 ├── js/
 │   ├── app.js              # Init, view switching, CSV/backup/restore
-│   ├── news.js             # Signal News tab — UI, polling, report panel, prices
+│   ├── news.js             # Signal News + LLM News tabs — UI, polling, report panel, prices, LLM query manager
 │   ├── calc.js             # FIFO P&L engine, stats aggregation
 │   ├── modal.js            # Trade form, leg editor, profit targets, stop loss, inline edit
 │   ├── filters.js          # Global filter bar
