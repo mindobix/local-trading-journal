@@ -63,6 +63,12 @@ A full three-view (Monthly / Weekly / Daily) option trade plan tracker:
 - Color-code cards with 24 presets or a custom color picker
 - Write daily journal entries with inline rich-text editor (auto-saved)
 
+**Weekly Prep summary** — when trade cards are entered on the previous Saturday or Sunday with the "Week Of" set to a future week, those cards automatically surface as a pinned **Weekly Prep** section at the top of that week's Daily view:
+- Cards are shown full-size with a partial peek (height-clipped with a gradient fade) hinting there are more — click **Show all** to expand
+- Amber styling distinguishes prep cards from cards entered during the live trading week
+- A **Weekly Plan** toggle at the top reveals rich-text plan editors for each prep date (Saturday and/or Sunday), reading and saving directly to those dates — the same plan shown if you navigate to that Saturday or Sunday in the Daily view
+- If no weekend prep cards exist for a week, the section is hidden entirely
+
 ### Performance Reports
 - Win rate, profit factor, average win vs. average loss
 - Best/worst day, best/worst month

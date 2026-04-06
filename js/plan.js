@@ -115,6 +115,86 @@ function renderAddIdeaCard(weekOf) {
 </div>`;
 }
 
+// ── Weekly prep summary (prev-week Sat/Sun cards at top of daily view) ──
+function renderWeeklySummarySection(ideas, monday) {
+  const callCount  = ideas.filter(i => i.optionType === 'call').length;
+  const putCount   = ideas.filter(i => i.optionType === 'put').length;
+  // Sorted so Sat comes before Sun
+  const dates      = [...new Set(ideas.map(i => i.createdAt).filter(Boolean))].sort();
+  const dateLabel  = dates.map(d =>
+    new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+  ).join(', ');
+
+  const plans       = loadPlans();
+  const toggleKey   = 'prep-' + monday; // used only for the section open/close toggle
+  const hasAnyPlan  = dates.some(d => plans[d] !== undefined);
+
+  // One plan block per actual creation date (Sat and/or Sun), saving to the real date key
+  const planBlocks = dates.map(date => {
+    const hasPlan    = plans[date] !== undefined;
+    const content    = hasPlan ? plans[date] : PLAN_TEMPLATE;
+    const dayLabel   = new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+    const deleteBtn  = hasPlan
+      ? `<button class="plan-delete-btn" id="plan-del-btn-${date}" onclick="deleteDayPlan('${date}')">&#128465; Delete</button>`
+      : `<span id="plan-del-btn-${date}"></span>`;
+    return `
+<div class="week-summary-plan-block">
+  <div class="day-plan-bar">
+    <span class="day-plan-title">${dayLabel}</span>
+    <div class="plan-editor-toolbar day-plan-toolbar">
+      <button class="plan-fmt-btn" onmousedown="event.preventDefault();planCmd('bold')"      title="Bold"><b>B</b></button>
+      <button class="plan-fmt-btn" onmousedown="event.preventDefault();planCmd('italic')"    title="Italic"><i>I</i></button>
+      <button class="plan-fmt-btn" onmousedown="event.preventDefault();planCmd('underline')" title="Underline"><u>U</u></button>
+    </div>
+    ${deleteBtn}
+  </div>
+  <div id="day-plan-editor-${date}"
+       class="plan-editor day-plan-editor"
+       contenteditable="true"
+       oninput="autoSaveDayPlan('${date}')">${content}</div>
+</div>`;
+  }).join('');
+
+  return `
+<section class="week-summary-section">
+  <div class="week-summary-header">
+    <div class="week-summary-title-group">
+      <svg class="week-summary-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span class="week-summary-title">Weekly Prep</span>
+      <span class="week-summary-date">entered ${dateLabel}</span>
+    </div>
+    <div class="week-summary-meta">
+      ${ideas.length ? `<span class="meta-chip calls">${callCount}C</span><span class="meta-chip puts">${putCount}P</span>` : ''}
+      <span class="meta-chip total">${ideas.length} plan${ideas.length !== 1 ? 's' : ''}</span>
+      <button class="toggle-plan-btn ${hasAnyPlan ? 'has-plan' : ''}" id="toggle-plan-btn-${toggleKey}"
+              onclick="toggleDayPlanSection('${toggleKey}')">
+        ${hasAnyPlan ? '&#128196; Weekly Plan' : '+ Weekly Plan'}
+      </button>
+      <button class="week-summary-toggle" id="week-summary-toggle-${monday}" onclick="toggleWeeklySummary('${monday}')">Show all</button>
+    </div>
+  </div>
+  <div class="week-summary-cards-wrap" id="week-summary-wrap-${monday}">
+    <div class="week-summary-cards">
+      ${ideas.map(renderIdeaCard).join('')}
+    </div>
+    <div class="week-summary-fade" id="week-summary-fade-${monday}"></div>
+  </div>
+  <div class="day-plan-section week-summary-plan" id="day-plan-section-${toggleKey}" style="display:none">
+    ${planBlocks}
+  </div>
+</section>`;
+}
+
+function toggleWeeklySummary(monday) {
+  const wrap = document.getElementById('week-summary-wrap-' + monday);
+  const fade = document.getElementById('week-summary-fade-' + monday);
+  const btn  = document.getElementById('week-summary-toggle-' + monday);
+  if (!wrap) return;
+  const expanded = wrap.classList.toggle('expanded');
+  if (fade) fade.style.display = expanded ? 'none' : '';
+  if (btn)  btn.textContent    = expanded ? 'Show less' : 'Show all';
+}
+
 // ── Navigation label ──────────────────────────────────────────────
 function updatePlanNavLabel() {
   const el = document.getElementById('plan-nav-label');
@@ -258,8 +338,19 @@ function renderPlanDailyView(monday) {
     return d.toISOString().slice(0, 10);
   });
 
-  el.innerHTML = days.map(date => {
+  // Cards planned for this week that were entered on a PREVIOUS week's Sat or Sun
+  const thisWeekDates = new Set(days);
+  const weekPrepIdeas = allIdeas.filter(i => {
+    if (i.weekOf !== monday) return false;
+    const cardDate = i.createdAt || today;
+    if (thisWeekDates.has(cardDate)) return false; // entered this week → show in day column
+    const dow = new Date(cardDate + 'T12:00:00').getDay();
+    return dow === 0 || dow === 6; // only Sat (6) or Sun (0) entries from prior weeks
+  });
+
+  const daySections = days.map(date => {
     const isToday   = date === today;
+    // Each day shows only cards created on that exact date
     const dayIdeas  = allIdeas.filter(i => (i.createdAt || today) === date);
     const callCount = dayIdeas.filter(i => i.optionType === 'call').length;
     const putCount  = dayIdeas.filter(i => i.optionType === 'put').length;
@@ -268,7 +359,7 @@ function renderPlanDailyView(monday) {
     });
     const hasPlan      = plans[date] !== undefined;
     const planContent  = hasPlan ? plans[date] : PLAN_TEMPLATE;
-    const planVisible  = isToday; // today's plan section expanded by default
+    const planVisible  = isToday;
 
     const deleteBtn = hasPlan
       ? `<button class="plan-delete-btn" id="plan-del-btn-${date}" onclick="deleteDayPlan('${date}')">&#128465; Delete</button>`
@@ -311,6 +402,8 @@ function renderPlanDailyView(monday) {
   </div>
 </section>`;
   }).join('');
+
+  el.innerHTML = (weekPrepIdeas.length ? renderWeeklySummarySection(weekPrepIdeas, monday) : '') + daySections;
 }
 
 // ── Daily plan editor actions ─────────────────────────────────────

@@ -367,6 +367,102 @@
 }
 .add-card-inner span { font-size: 12px; font-weight: 600; }
 
+/* ── Weekly prep summary (top of daily view, prev-week Sat/Sun cards) ── */
+.week-summary-section {
+  margin-bottom: 20px;
+  background: rgba(245, 158, 11, 0.05);
+  border: 1px solid rgba(245, 158, 11, 0.28);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.week-summary-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-bottom: 1px solid rgba(245, 158, 11, 0.15);
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.week-summary-title-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.week-summary-icon {
+  width: 15px;
+  height: 15px;
+  color: rgb(245, 158, 11);
+  flex-shrink: 0;
+}
+.week-summary-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: rgb(245, 158, 11);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.week-summary-date {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.week-summary-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.week-summary-toggle {
+  font-size: 11px;
+  font-weight: 600;
+  color: rgb(245, 158, 11);
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  border-radius: 6px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.week-summary-toggle:hover { background: rgba(245, 158, 11, 0.22); }
+.week-summary-cards-wrap {
+  position: relative;
+  max-height: 185px; /* partial peek — ~70% of one card row */
+  overflow: hidden;
+  transition: max-height 0.35s ease;
+}
+.week-summary-cards-wrap.expanded { max-height: 4000px; }
+.week-summary-cards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 16px 20px;
+}
+/* Subtle amber tint on cards inside the summary */
+.week-summary-cards .option-card {
+  border-color: rgba(245, 158, 11, 0.25);
+}
+.week-summary-fade {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 90px;
+  background: linear-gradient(to bottom, transparent 0%, rgba(245, 158, 11, 0.07) 60%, rgba(245, 158, 11, 0.13) 100%);
+  pointer-events: none;
+}
+.week-summary-plan {
+  margin-top: 0;
+  border-top: 1px solid rgba(245, 158, 11, 0.2);
+  padding: 16px 20px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.week-summary-plan-block + .week-summary-plan-block {
+  padding-top: 20px;
+  border-top: 1px solid rgba(245, 158, 11, 0.15);
+}
+
 /* ── Empty state ── */
 .empty-state {
   display: flex;
