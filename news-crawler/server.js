@@ -795,6 +795,25 @@ async function start() {
   fetchPrices(syms0).catch(err => console.warn('[Prices] Startup fetch error:', err.message));
   runCrawl().catch(err => console.error('[Crawl] Initial crawl error:', err));
   cron.schedule('*/5 * * * *', runCrawl);
+
+  // Generate reports for any symbol that has articles but no report file yet.
+  // This covers the case where the server was restarted after symbols were added
+  // (articles are "not new" on restart, so the crawl won't trigger workers for them).
+  (async () => {
+    try {
+      const existing = await loadNews();
+      const articlesInStore = new Set((existing.articles || []).map(a => a.symbol));
+      const missingReports  = [...articlesInStore].filter(sym => !_reportJobs.has(sym));
+      if (missingReports.length > 0) {
+        console.log(`[Startup] Generating missing reports for: ${missingReports.join(', ')}`);
+        for (const sym of missingReports) {
+          await _runReportWorker(sym, 4 * 3600 * 1000);
+        }
+      }
+    } catch (err) {
+      console.error('[Startup] Missing-report generation error:', err.message);
+    }
+  })();
 }
 
 start().catch(err => { console.error('Startup error:', err); process.exit(1); });
