@@ -93,13 +93,29 @@ A live market intelligence feed powered by a local Node.js background server. No
 
 **AI Signal Reports (per ticker)**
 - Automatically triggered when new articles arrive for a symbol — no manual action needed
-- Uses `@xenova/transformers` (Xenova/all-MiniLM-L6-v2) for embedding-based article scoring
-- Summarization via Xenova/distilbart-cnn-6-6
+- Uses `@xenova/transformers` with `Xenova/bge-small-en-v1.5` for fast, accurate embedding-based article scoring
+- Summarization via `Xenova/distilbart-cnn-6-6`
 - Articles are classified as signal vs noise against a configurable taxonomy of market categories
 - Duplicate articles are deduplicated by semantic similarity
 - Reports show: sentiment (bullish/bearish/mixed/neutral), signal count, noise count, story clusters with summaries
-- 20-minute per-symbol cooldown prevents redundant re-runs on every crawl cycle
+- Stories sorted latest-first; **NEW** pill highlights articles that weren't in the previous report
 - Workers run in isolated `child_process.fork()` processes — never blocks the UI or main server
+
+**Incremental processing — fast on warm runs**
+
+All heavy work is cached so re-runs only process what's new:
+
+| Cache | Location | What it stores |
+|-------|----------|----------------|
+| Embedding vectors | `data/embeddings/{id}.json` | Article + signal phrase vectors (model-versioned) |
+| Signal scores | `data/processed/{symbol}.json` | Per-article scores with taxonomy hash; auto-invalidated when taxonomy changes |
+| Summaries | `data/summaries/{id}.txt` | LLM-generated cluster summaries |
+| Reports | `data/reports/{symbol}.json` | Latest signal report per symbol |
+| Article content | `data/articles/{id}.json` | Readability-extracted full text (or RSS preview fallback) |
+
+**Crawl / signal worker interlock**
+
+RSS crawling pauses automatically while signal workers are running (they're CPU-intensive). Once the last worker finishes, any crawl that was skipped fires immediately so no articles are missed.
 
 **Tab dot indicators**
 - Blinking amber dot — signal analysis running for that ticker
@@ -111,8 +127,23 @@ A live market intelligence feed powered by a local Node.js background server. No
 **RSS News Aggregation**
 - Crawls configured RSS/Atom feeds every 5 minutes
 - Pinned tabs: MARKET, SPX, SPY, QQQ — always first, cannot be deleted
-- Add, edit, or remove RSS feeds per ticker from the settings panel
-- Full article text extracted via Mozilla Readability (cached locally)
+- Add, edit, or remove RSS feeds per ticker from the **Signal News Settings** panel
+- Ticker feeds use a shared template with `{SYMBOL}` placeholder — one template applies to all tickers
+- Separate Market section for MARKET-only feeds
+
+**Article reader**
+- Full article text extracted via `@mozilla/readability` and cached locally
+- `__NEXT_DATA__` fallback parser for Yahoo Finance and other Next.js sites where Readability gets a JS hydration shell
+- Paywalled/JS-rendered domains (Seeking Alpha, Bloomberg, WSJ, FT, Barron's) are detected and skipped automatically
+- When full extraction fails, the RSS description is cached as a preview — reader always shows something with an amber "Preview only" banner and a direct link to the original
+- Transient failures (network errors) retry automatically after 1 hour
+
+**Signal News Settings**
+- Manage ticker symbols as chips (add/remove)
+- SPX, SPY, QQQ are pinned and non-deletable
+- One shared RSS feed template for all ticker symbols
+- Separate feed management for MARKET
+- **Clear Cache** button wipes all cached data: articles, embeddings, summaries, scores, and reports — triggers a fresh crawl automatically
 
 ---
 
@@ -146,9 +177,10 @@ cd news-crawler
 Then open `http://localhost:3737` in your browser. The Signal News tab will connect automatically.
 
 The server:
-- Crawls RSS feeds every 5 minutes
+- Crawls RSS feeds every 5 minutes (paused while signal workers are running)
 - Fetches live stock prices on each crawl cycle
 - Runs AI signal analysis in background worker processes when new articles arrive
+- Caches article content, embeddings, scores, and summaries for fast incremental runs
 - Serves the full trading journal at `http://localhost:3737`
 
 **Browser requirements:** Any modern browser — Chrome 51+, Firefox 54+, Safari 10+, Edge 15+.
@@ -157,7 +189,7 @@ The server:
 
 ## Data & Privacy
 
-All data lives in your browser's `localStorage`. Nothing is transmitted anywhere.
+All trade data lives in your browser's `localStorage`. Nothing is transmitted anywhere.
 
 | Key | Contents |
 |-----|----------|
@@ -167,6 +199,8 @@ All data lives in your browser's `localStorage`. Nothing is transmitted anywhere
 | `tj-mistakes-v1` | Mistake log |
 | `tj-plans-v1` | Daily journal entries |
 | `ow-ideas-v1` | Trade plan ideas |
+
+Signal News data is stored locally under `news-crawler/data/` and is never sent to any external service.
 
 Use **Backup** in the header to export a full JSON snapshot. Use **Restore** to load it back into any browser. Data does not sync between devices — keep your backup file safe.
 
@@ -264,10 +298,12 @@ local-trading-journal/
 │   ├── helpers.js          # Date formatting, HTML escaping
 │   └── wotp-helpers.js     # Week/month helpers, card color utilities
 └── news-crawler/           # Local background server (Node.js)
-    ├── server.js           # Express server, crawl loop, price fetcher, report job manager
+    ├── server.js           # Express server, crawl loop, price fetcher, report job manager,
+    │                       #   Readability extraction, __NEXT_DATA__ fallback, crawl/worker interlock
     ├── report-worker.js    # Forked child process — runs AI signal analysis in isolation
-    ├── report-gen.js       # Signal scoring, deduplication, summarization pipeline
-    ├── embeddings.js       # Embedding cache + cosine similarity scoring
+    ├── report-gen.js       # Signal scoring, deduplication, summarization pipeline with
+    │                       #   taxonomy-hash-invalidated score cache
+    ├── embeddings.js       # bge-small-en-v1.5 embeddings, cosine scoring, dedup clustering
     ├── summarizer.js       # Xenova/distilbart-cnn-6-6 summarization
     ├── start.sh            # Start script (kills stale server, installs deps, starts node)
     ├── package.json
@@ -289,6 +325,6 @@ Zero external libraries. Pure HTML, CSS, and vanilla JavaScript — no npm, no b
 | `express` | HTTP server |
 | `axios` | RSS + Yahoo Finance fetching |
 | `@mozilla/readability` + `jsdom` | Full article text extraction |
-| `@xenova/transformers` | Local AI — embeddings + summarization (runs offline) |
+| `@xenova/transformers` | Local AI — embeddings (`bge-small-en-v1.5`) + summarization (`distilbart-cnn-6-6`); runs fully offline |
 | `fast-xml-parser` | RSS/Atom parsing |
-| `node-cron` | Crawl + price refresh scheduling |
+| `node-cron` | Crawl scheduling |
