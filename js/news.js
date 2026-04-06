@@ -62,6 +62,7 @@ const _news = {
   reportSignalMap:  new Map(),   // articleId → topSignal entry for active symbol's report
   statusPollTimer:  null,
   taxonomy:         null,
+  prices:           {},          // symbol → { price, change, changePct, updatedAt }
 };
 
 
@@ -143,6 +144,14 @@ async function _checkReportStatuses() {
   const view = document.getElementById('view-news');
   if (!view || view.style.display === 'none') return;
 
+  // Update price cache in background (non-blocking)
+  fetch(`${NEWS_API}/news/prices`).then(r => r.ok ? r.json() : null).then(data => {
+    if (!data) return;
+    _news.prices = data;
+    // Re-render panel header if a price just arrived for the active symbol
+    if (data[_news.activeSymbol]) _renderReportPanel();
+  }).catch(() => {});
+
   try {
     const r = await fetch(`${NEWS_API}/news/reports/status`);
     if (!r.ok) return;
@@ -214,6 +223,18 @@ function _renderReportPanel() {
   const sentimentIcon  = { bullish: '▲', bearish: '▼', mixed: '◆', neutral: '─' }[report.sentiment] || '─';
   const age = _timeAgo(report.generatedAt);
 
+  const priceData = _news.prices[sym];
+  const priceHTML = priceData ? (() => {
+    const p   = priceData.price.toFixed(2);
+    const chg = priceData.change >= 0 ? `+${priceData.change.toFixed(2)}` : priceData.change.toFixed(2);
+    const pct = priceData.changePct >= 0 ? `+${priceData.changePct.toFixed(2)}%` : `${priceData.changePct.toFixed(2)}%`;
+    const cls = priceData.change >= 0 ? 'nrp-price-up' : 'nrp-price-down';
+    return `<div class="nrp-price-row">
+      <span class="nrp-price-val">$${_esc(p)}</span>
+      <span class="nrp-price-chg ${cls}">${_esc(chg)} (${_esc(pct)})</span>
+    </div>`;
+  })() : '';
+
   const storiesHTML = (report.clusters || []).slice(0, 5).map(c => {
     const rep = c.representative;
     const dupeLabel  = c.duplicates?.length ? `<span class="nrp-dupes">+${c.duplicates.length} similar</span>` : '';
@@ -240,6 +261,7 @@ function _renderReportPanel() {
         <span class="nrp-title">Signal Report</span>
         <span class="nrp-age">${_esc(age)}</span>
       </div>
+      ${priceHTML}
       <div class="nrp-sentiment-block ${sentimentClass}">
         <span class="nrp-sent-icon">${sentimentIcon}</span>
         <span class="nrp-sent-label">${report.sentiment}</span>

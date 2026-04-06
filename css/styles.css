@@ -3760,9 +3760,15 @@ input:checked ~ .nws-toggle-track .nws-toggle-thumb { background: #fff; transfor
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* Header row */
-.nrp-hdr-row { display: flex; align-items: center; gap: 7px; margin-bottom: 12px; }
+.nrp-hdr-row { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
 .nrp-sym-badge { padding: 3px 9px; border-radius: 5px; color: #fff; font-weight: 700; font-size: 12px; letter-spacing: 0.04em; }
 .nrp-title { font-weight: 700; font-size: 13px; color: var(--text); flex: 1; }
+/* Price row */
+.nrp-price-row { display: flex; align-items: baseline; gap: 7px; margin-bottom: 10px; padding: 6px 10px; background: var(--bg2); border-radius: 7px; }
+.nrp-price-val { font-size: 20px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+.nrp-price-chg { font-size: 12px; font-weight: 600; }
+.nrp-price-up   { color: #22c55e; }
+.nrp-price-down { color: #ef4444; }
 
 /* Prominent sentiment block */
 .nrp-sentiment-block {

@@ -32,34 +32,81 @@ const REPORT_WORKER_PATH = path.join(__dirname, 'report-worker.js');
 // Keyed by symbol. status: 'running' | 'done' | 'error'
 const _reportJobs = new Map();
 
+// ─── Stock price cache ────────────────────────────────────────────────────────
+// Keyed by internal symbol. Updated every crawl cycle.
+const _priceCache = {};
+
+// Map internal symbols → Yahoo Finance tickers. null = no price available (indices, etc).
+const YAHOO_SYM_MAP = { MARKET: null, SPX: '^GSPC' };
+
+// Uses Yahoo Finance v8 chart API — no API key required.
+async function fetchOnePriceV8(internalSym, yTicker) {
+  const url = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yTicker)}?interval=1d&range=1d`;
+  const resp = await axios.get(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)' },
+    timeout: 10000, httpAgent, httpsAgent
+  });
+  const meta = resp.data?.chart?.result?.[0]?.meta;
+  if (!meta) throw new Error('No meta in response');
+  const price  = meta.regularMarketPrice;
+  const prev   = meta.chartPreviousClose || meta.previousClose || price;
+  const change = price - prev;
+  _priceCache[internalSym] = {
+    price,
+    change,
+    changePct: prev ? (change / prev) * 100 : 0,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+async function fetchPrices(symbols) {
+  const pairs = symbols.map(s => [s, YAHOO_SYM_MAP.hasOwnProperty(s) ? YAHOO_SYM_MAP[s] : s])
+                       .filter(([, y]) => y);
+  const results = await Promise.allSettled(pairs.map(([s, y]) => fetchOnePriceV8(s, y)));
+  const updated = pairs.filter((_, i) => results[i].status === 'fulfilled').map(([s]) => s);
+  const failed  = pairs.filter((_, i) => results[i].status === 'rejected').map(([s]) => s);
+  if (updated.length) console.log(`[Prices] Updated: ${updated.join(', ')}`);
+  if (failed.length)  console.warn(`[Prices] Failed: ${failed.join(', ')}`);
+}
+
+const REPORT_COOLDOWN_MS = 20 * 60 * 1000; // don't re-run within 20 min of last trigger
+
 function _runReportWorker(symbol, windowMs) {
   return new Promise(resolve => {
-    if (_reportJobs.get(symbol)?.status === 'running') { resolve(); return; }
+    const job = _reportJobs.get(symbol);
+    if (job?.status === 'running') { resolve(); return; }
+    // Cooldown: skip if this symbol was triggered recently
+    if (job?.triggeredAt && Date.now() - job.triggeredAt < REPORT_COOLDOWN_MS) {
+      resolve(); return;
+    }
 
-    _reportJobs.set(symbol, { status: 'running' });
+    _reportJobs.set(symbol, { status: 'running', triggeredAt: Date.now() });
     const child = fork(REPORT_WORKER_PATH, [symbol, String(windowMs)]);
 
     child.on('message', msg => {
+      const { triggeredAt } = _reportJobs.get(symbol) || {};
       if (msg.ok) {
-        _reportJobs.set(symbol, { status: 'done', report: msg.report });
+        _reportJobs.set(symbol, { status: 'done', report: msg.report, triggeredAt });
         console.log(`[Report Worker] ${symbol} done.`);
       } else {
-        _reportJobs.set(symbol, { status: 'error', error: msg.error });
+        _reportJobs.set(symbol, { status: 'error', error: msg.error, triggeredAt });
         console.error(`[Report Worker] ${symbol} failed:`, msg.error);
       }
       resolve();
     });
 
     child.on('error', err => {
-      _reportJobs.set(symbol, { status: 'error', error: err.message });
+      const { triggeredAt } = _reportJobs.get(symbol) || {};
+      _reportJobs.set(symbol, { status: 'error', error: err.message, triggeredAt });
       console.error(`[Report Worker] ${symbol} fork error:`, err.message);
       resolve();
     });
 
     // Catch crashes that exit before sending a message
     child.on('exit', code => {
-      if (_reportJobs.get(symbol)?.status === 'running') {
-        _reportJobs.set(symbol, { status: 'error', error: `Process exited with code ${code}` });
+      const job = _reportJobs.get(symbol);
+      if (job?.status === 'running') {
+        _reportJobs.set(symbol, { status: 'error', error: `Process exited with code ${code}`, triggeredAt: job.triggeredAt });
         resolve();
       }
     });
@@ -340,6 +387,10 @@ async function runCrawl() {
   // Background: extract & cache article content (non-blocking).
   cacheNewArticles(articles).catch(err => console.error('[Readability] Cache error:', err));
 
+  // Update price cache for all tracked symbols (non-blocking).
+  const allSymbols = [...new Set([...(config.symbols || []), 'MARKET', 'SPX', 'SPY', 'QQQ'])];
+  fetchPrices(allSymbols).catch(err => console.warn('[Prices] Error:', err.message));
+
   // Auto-trigger signal analysis for every symbol that received new articles.
   if (affectedSymbols.length > 0) {
     console.log(`[Crawl] New articles for: ${affectedSymbols.join(', ')} — queuing signal analysis`);
@@ -443,6 +494,12 @@ app.get('/api/news/article', async (req, res) => {
   res.status(400).json({ error: 'id or url required' });
 });
 
+// ─── Price endpoint ───────────────────────────────────────────────────────────
+// GET /api/news/prices — returns current price cache for all symbols
+app.get('/api/news/prices', (_req, res) => {
+  res.json(_priceCache);
+});
+
 // ─── Signal taxonomy endpoints ────────────────────────────────────────────────
 
 app.get('/api/news/taxonomy', async (req, res) => {
@@ -513,23 +570,26 @@ async function start() {
   await fs.mkdir(ARTICLES_DIR, { recursive: true });
   await fs.mkdir(REPORTS_DIR, { recursive: true });
   await migrateConfig();
-  await runCrawl();
-  cron.schedule('*/5 * * * *', runCrawl);
-  // Generate reports every hour via workers — sequential, non-blocking
-  cron.schedule('0 * * * *', async () => {
-    const config  = await loadConfig();
-    const symbols = [...(config.symbols || []), 'MARKET'];
-    for (const sym of symbols) await _runReportWorker(sym, 4 * 3600 * 1000);
+
+  // Bind the port first — fail fast if already in use, before doing any crawl work
+  await new Promise((resolve, reject) => {
+    app.listen(PORT, () => {
+      console.log('');
+      console.log('  ┌──────────────────────────────────────────────┐');
+      console.log(`  │  Market News Crawler → http://localhost:${PORT}  │`);
+      console.log('  │  Auto-crawl every 5 minutes                  │');
+      console.log('  └──────────────────────────────────────────────┘');
+      console.log('');
+      resolve();
+    }).on('error', reject);
   });
 
-  app.listen(PORT, () => {
-    console.log('');
-    console.log('  ┌──────────────────────────────────────────────┐');
-    console.log(`  │  Market News Crawler → http://localhost:${PORT}  │`);
-    console.log('  │  Auto-crawl every 5 minutes                  │');
-    console.log('  └──────────────────────────────────────────────┘');
-    console.log('');
-  });
+  // Initial price fetch + crawl after the server is already listening
+  const config0 = await loadConfig();
+  const syms0   = [...new Set([...(config0.symbols || []), 'MARKET', 'SPX', 'SPY', 'QQQ'])];
+  fetchPrices(syms0).catch(err => console.warn('[Prices] Startup fetch error:', err.message));
+  runCrawl().catch(err => console.error('[Crawl] Initial crawl error:', err));
+  cron.schedule('*/5 * * * *', runCrawl);
 }
 
 start().catch(err => { console.error('Startup error:', err); process.exit(1); });
