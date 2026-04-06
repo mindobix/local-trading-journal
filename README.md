@@ -3,7 +3,7 @@
 
 **Stop paying $25–50/month for a trading journal.** Local Trading Journal is a full-featured, privacy-first trading journal that runs entirely in your browser — no subscription, no account, no data leaving your machine.
 
-Now includes a **Signal News** tab — a live market intelligence feed with AI-powered signal analysis, real-time stock prices, and RSS news aggregation running on a local background server — plus an **LLM News** tab for tracking and organizing AI-generated market analysis from ChatGPT, Grok, Gemini, Claude, or any other LLM.
+Now includes a **Signal News** tab — a live market intelligence feed with AI-powered signal analysis, real-time stock prices, and RSS news aggregation running on a local background server — plus an **LLM Prompts** tab for saving, organizing, and launching AI market analysis prompts for ChatGPT, Grok, Gemini, Claude, or any other LLM.
 
 ---
 
@@ -79,26 +79,41 @@ Filter any view by date range, symbol, tags, mistakes, rules, trade type, and mo
 
 ### CSV Import & JSON Backup
 - Import trades in bulk from a CSV file (broker export or manual entry)
-- Full JSON backup/restore — export everything (trades, tags, rules, plans, ideas, LLM queries) and restore it to any browser
+- Full JSON backup/restore — export everything (trades, tags, rules, plans, ideas, LLM prompts) and restore it to any browser
 
 ---
 
-### LLM News Tab
+### LLM Prompts Tab
 
-A personal log for AI-generated market analysis. Use your favourite LLM (ChatGPT, Grok, Gemini, Claude, or any other) to research the market, then save the prompt and results here for future reference.
+A prompt library for AI-powered market analysis. Save, organize, and launch prompts for any LLM — Grok, ChatGPT, Gemini, Claude, or any other tool.
 
 **Quick-launch strip** — Grok, ChatGPT, Gemini, and Claude buttons are always visible at the top of the tab. One tap opens the LLM in a new browser tab.
 
-**Query list** — left panel shows all saved queries with LLM badge (color-coded), date/time, and a prompt preview.
+**Prompt list** — left panel shows all saved prompts with LLM badge (color-coded), category pill, and full prompt text.
 
-**Query view** — tap any query to see:
-- Full prompt with a **Copy prompt** button
+**Prompt categories** — each prompt has a Prompt Category field. Categories are color-coded consistently across the list, view, and form (8-color palette, deterministic by category name). New categories can be added inline while saving a prompt, or via the **+ Save** button in the form. Existing categories appear as colored pills — click one to use it, click ✕ to delete it.
+
+**Prompt view** — tap any prompt to see:
+- Full prompt text with a **Copy prompt** button
+- Category badge and LLM badge
 - Rich text results panel — paste output directly from the LLM, formatting preserved (bold, headings, bullet lists, etc.)
 - Edit / Delete actions
 
 **Rich text editor** — contenteditable editor with a formatting toolbar (Bold, Italic, Underline, bullet/numbered lists, Heading, Paragraph). Paste from any LLM and the formatting comes through intact.
 
-**Storage** — prompts are saved to `localStorage` and included in the JSON backup/restore. Results are stored locally only and not exported (they can be large).
+**6 default prompts** — seeded automatically on first load, all using Grok:
+| Category | Purpose |
+|---|---|
+| Trade Idea Generator | 5 high-probability setups with entry, targets, stop, R:R |
+| Automated Technical Analyst | Support/resistance, MAs, momentum — Buy/Hold/Sell signal |
+| News-to-Trade Converter | Translate latest news into price movement and positioning |
+| Strategy Backtester | Win rate, profit factor, max drawdown for any strategy |
+| Fully Automated Trade Plan | Pre-market to close checklist for any market/asset |
+| Stock Move & X.com Sentiment | Price move + X.com sentiment summary for a watchlist |
+
+**↺ Defaults button** — restores any missing default prompts without touching existing ones. Useful after deleting a default or loading the app fresh.
+
+**Storage** — prompts and categories are saved to `localStorage` and included in the JSON backup/restore.
 
 ---
 
@@ -157,8 +172,8 @@ RSS crawling pauses automatically while signal workers are running (they're CPU-
 **Article reader**
 - Full article text extracted via `@mozilla/readability` and cached locally
 - `__NEXT_DATA__` fallback parser for Yahoo Finance and other Next.js sites where Readability gets a JS hydration shell
-- Paywalled/JS-rendered domains (Seeking Alpha, Bloomberg, WSJ, FT, Barron's) are detected and skipped automatically
-- When full extraction fails, the RSS description is cached as a preview — reader always shows something with an amber "Preview only" banner and a direct link to the original
+- Paywalled/JS-rendered domains (Seeking Alpha, Bloomberg, WSJ, FT, Barron's, TheStreet) are detected and skipped automatically — RSS description cached as fallback with an amber "Preview only" banner
+- When full extraction fails, the RSS description is cached as a preview — reader always shows something with a direct link to the original
 - Transient failures (network errors) retry automatically after 1 hour
 
 **Signal News Settings**
@@ -227,8 +242,9 @@ Signal News data is stored locally under `news-crawler/data/` and is never sent 
 
 | Key | Contents | In backup? |
 |-----|----------|-----------|
-| `ltj_llm_queries` | LLM query prompts | Yes |
+| `ltj_llm_queries` | LLM prompt entries (text, category, LLM) | Yes |
 | `ltj_llm_results` | LLM result HTML | No (local only) |
+| `ltj_llm_categories` | User-defined prompt categories | Yes |
 
 Use **Backup** in the header to export a full JSON snapshot. Use **Restore** to load it back into any browser. Data does not sync between devices — keep your backup file safe.
 
@@ -309,10 +325,23 @@ P&L uses **FIFO (First-In, First-Out)** matching:
 local-trading-journal/
 ├── index.html              # App shell and markup
 ├── css/
-│   └── styles.css          # Dark theme
+│   ├── styles.css          # Orchestrator — @import all partials
+│   ├── base.css            # CSS variables, reset, body
+│   ├── header.css          # Header, nav, add/data dropdowns
+│   ├── filters.css         # Stats bar, filter bar, active filters
+│   ├── calendar.css        # Calendar nav, grid, weekly layout
+│   ├── trades.css          # Trades view, modal, trade form, legs
+│   ├── rules-tags-mistakes.css  # Trading rules, tags, mistakes
+│   ├── daily-plan.css      # Daily plan tab
+│   ├── reports.css         # Reports tab
+│   ├── trade-plan.css      # Trade plan (monthly/weekly/daily)
+│   ├── targets.css         # Profit targets, stop loss, R-multiple
+│   ├── bulk-entry.css      # Bulk trade entry spreadsheet view
+│   ├── news.css            # Signal news tab
+│   └── llm.css             # LLM Prompts tab
 ├── js/
 │   ├── app.js              # Init, view switching, CSV/backup/restore
-│   ├── news.js             # Signal News + LLM News tabs — UI, polling, report panel, prices, LLM query manager
+│   ├── news.js             # Signal News + LLM Prompts tabs — UI, polling, report panel, prices, prompt manager
 │   ├── calc.js             # FIFO P&L engine, stats aggregation
 │   ├── modal.js            # Trade form, leg editor, profit targets, stop loss, inline edit
 │   ├── filters.js          # Global filter bar
@@ -333,7 +362,8 @@ local-trading-journal/
     │                       #   taxonomy-hash-invalidated score cache
     ├── embeddings.js       # bge-small-en-v1.5 embeddings, cosine scoring, dedup clustering
     ├── summarizer.js       # Xenova/distilbart-cnn-6-6 summarization
-    ├── start.sh            # Start script (kills stale server, installs deps, starts node)
+    ├── start.sh            # Start script (kills stale server, installs deps, starts node;
+    │                       #   filters ONNX Runtime initializer warnings from stderr)
     ├── package.json
     └── crawlers/
         ├── index.js        # Crawl orchestrator

@@ -1,0 +1,178 @@
+/* ─── DAILY PLAN ─── */
+.plan-layout {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+/* Mini Calendar */
+.plan-cal-panel {
+  flex-shrink: 0;
+  width: 280px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 16px;
+}
+.plan-cal-nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+.plan-cal-month-label { font-size: 14px; font-weight: 700; }
+.plan-cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+}
+.plan-cal-hdr {
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  padding: 6px 0 4px;
+}
+.plan-cal-day {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.12s;
+  position: relative;
+  color: var(--text);
+}
+.plan-cal-day:hover:not(.other-month) { background: var(--surface2); }
+.plan-cal-day.other-month  { color: var(--text-dim); pointer-events: none; }
+.plan-cal-day.weekend      { color: var(--text-muted); }
+.plan-cal-day.is-today     { border: 1px solid var(--accent); }
+.plan-cal-day.selected     { background: var(--accent) !important; color: #fff; }
+.plan-cal-day.has-plan::after {
+  content: '';
+  position: absolute;
+  bottom: 3px;
+  width: 4px; height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.plan-cal-day.selected.has-plan::after { background: rgba(255,255,255,0.7); }
+
+/* Editor Panel */
+.plan-content { flex: 1; min-width: 0; }
+.plan-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  min-height: 36px;
+}
+.plan-selected-label {
+  flex: 1;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+}
+.plan-delete-btn {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 14px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(239,68,68,0.4);
+  background: transparent;
+  color: var(--red);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.plan-delete-btn:hover { background: var(--red-bg); border-color: var(--red); }
+
+.plan-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  min-height: 320px;
+  background: var(--surface);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+.plan-placeholder-icon { font-size: 36px; opacity: 0.4; }
+.plan-placeholder-text { font-size: 14px; color: var(--text-muted); }
+
+.plan-editor-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.plan-editor-toolbar {
+  display: flex;
+  gap: 4px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface2);
+}
+.plan-fmt-btn {
+  width: 32px; height: 32px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  font-family: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.plan-fmt-btn:hover  { background: var(--surface3); color: var(--text); border-color: var(--accent); }
+.plan-fmt-btn.active { background: var(--accent-dim); color: var(--accent); border-color: var(--accent); }
+
+.plan-editor {
+  min-height: 500px;
+  padding: 28px 36px;
+  outline: none;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text);
+  caret-color: var(--accent);
+}
+.plan-editor h3 {
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+  margin: 24px 0 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.plan-editor h3:first-child { margin-top: 0; }
+.plan-editor h4 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+  margin: 16px 0 4px;
+}
+.plan-editor p { color: var(--text); margin: 2px 0; }
+.plan-editor p:empty::before { content: '\00a0'; }
+
+/* scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+

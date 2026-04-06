@@ -1,0 +1,323 @@
+/* ═══════════════════════════════════════════
+   BULK TRADE ENTRY VIEW
+   ═══════════════════════════════════════════ */
+
+.bulk-view {
+  position: fixed;
+  top: 58px;
+  left: 0; right: 0; bottom: 0;
+  z-index: 500;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ─── TOP BAR ─── */
+.bulk-topbar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  height: 56px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+}
+.bulk-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+.bulk-view-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+.bulk-count-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.bulk-topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.bulk-act-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.bulk-act-btn:hover { border-color: var(--accent); color: var(--text); background: var(--surface3); }
+.bulk-new-trade-btn { color: var(--accent); border-color: rgba(99,102,241,0.4); }
+.bulk-new-trade-btn:hover { background: var(--accent-dim); }
+.bulk-tb-divider { width: 1px; height: 24px; background: var(--border); }
+.bulk-save-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--green);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+.bulk-save-btn:hover { opacity: 0.85; }
+.bulk-close-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.bulk-close-btn:hover { border-color: var(--red); color: var(--red); background: var(--red-bg); }
+
+/* ─── MESSAGE PANEL ─── */
+.bulk-msg-panel {
+  flex-shrink: 0;
+  padding: 10px 24px;
+  font-size: 13px;
+  font-weight: 500;
+}
+.bulk-msg-error {
+  background: rgba(239,68,68,0.08);
+  border-bottom: 1px solid rgba(239,68,68,0.25);
+  color: var(--red);
+}
+.bulk-msg-success {
+  background: rgba(16,185,129,0.1);
+  border-bottom: 1px solid rgba(16,185,129,0.25);
+  color: var(--green);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.bulk-msg-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.bulk-msg-errs { display: flex; flex-direction: column; gap: 3px; }
+.bulk-msg-err-row { font-size: 12px; }
+.bulk-msg-x {
+  background: none;
+  border: none;
+  color: var(--red);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.bulk-msg-x:hover { background: var(--red-bg); }
+
+/* ─── GRID CONTAINER ─── */
+.bulk-grid-outer {
+  flex: 1;
+  overflow: auto;
+  padding-bottom: 32px;
+}
+
+/* ─── TABLE ─── */
+.bulk-grid {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.bulk-grid thead tr {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--surface);
+}
+.bulk-grid th {
+  padding: 10px 8px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-muted);
+  border-bottom: 2px solid var(--border);
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.col-req { color: var(--red); font-size: 10px; vertical-align: super; }
+
+/* column widths */
+.col-tid     { width: 62px;  min-width: 62px; }
+.col-sym     { width: 88px;  min-width: 88px; }
+.col-type    { width: 90px;  min-width: 90px; }
+.col-opttype { width: 88px;  min-width: 88px; }
+.col-strike  { width: 78px;  min-width: 78px; }
+.col-expiry  { width: 122px; min-width: 122px; }
+.col-action  { width: 82px;  min-width: 82px; }
+.col-dt      { width: 182px; min-width: 182px; }
+.col-price   { width: 82px;  min-width: 82px; }
+.col-qty     { width: 68px;  min-width: 68px; }
+.col-comm    { width: 68px;  min-width: 68px; }
+.col-fees    { width: 68px;  min-width: 68px; }
+.col-notes   { width: 200px; min-width: 140px; }
+.col-tags    { width: 76px;  min-width: 76px; }
+.col-mistakes{ width: 84px;  min-width: 84px; }
+.col-rules   { width: 76px;  min-width: 76px; }
+.col-del     { width: 36px;  min-width: 36px; }
+
+/* ─── ROWS ─── */
+.bulk-row td {
+  padding: 3px 5px;
+  border-bottom: 1px solid rgba(42,51,71,0.6);
+  vertical-align: middle;
+}
+.bulk-row-alt td { background: rgba(255,255,255,0.018); }
+.bulk-row-err td { background: rgba(239,68,68,0.07) !important; }
+.bulk-cell-err   { background: rgba(239,68,68,0.18) !important; }
+.bulk-cell-err input,
+.bulk-cell-err select { border-color: var(--red) !important; box-shadow: 0 0 0 1px var(--red); }
+
+/* dimmed option cells */
+.bcd { opacity: 0.28; pointer-events: none; }
+
+/* ─── INPUTS ─── */
+.bulk-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 5px 6px;
+  outline: none;
+  width: 100%;
+  transition: border-color 0.12s;
+}
+.bulk-input:focus { border-color: var(--accent); background: var(--surface3); }
+.bulk-input::placeholder { color: var(--text-dim); }
+.bulk-input[disabled] { opacity: 0.35; }
+
+/* hide spinner arrows on number inputs */
+.bulk-input[type=number]::-webkit-inner-spin-button,
+.bulk-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+.bulk-input[type=number] { -moz-appearance: textfield; }
+
+/* ─── SELECTS ─── */
+.bulk-select {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: inherit;
+  padding: 5px 6px;
+  outline: none;
+  width: 100%;
+  cursor: pointer;
+  transition: border-color 0.12s;
+}
+.bulk-select:focus  { border-color: var(--accent); }
+.bulk-select:disabled { opacity: 0.35; }
+.bulk-select.bulk-buy  { color: var(--green); border-color: rgba(16,185,129,0.4); }
+.bulk-select.bulk-sell { color: var(--red);   border-color: rgba(239,68,68,0.4); }
+
+/* ─── DD CELL BUTTONS ─── */
+.bulk-dd-cell { padding: 3px 4px !important; }
+.bulk-dd-btn {
+  width: 100%;
+  padding: 5px 6px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.12s;
+  text-align: center;
+  white-space: nowrap;
+}
+.bulk-dd-btn:hover { border-color: var(--accent); color: var(--text); }
+.bulk-dd-btn.has-sel { color: var(--accent); border-color: rgba(99,102,241,0.45); background: var(--accent-dim); }
+
+/* ─── CELL DROPDOWN POPOVER ─── */
+.bulk-cell-dd {
+  z-index: 9999;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.55);
+  padding: 5px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.bulk-cell-dd-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 8px 6px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 3px;
+}
+.bulk-cell-dd-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text);
+  transition: background 0.1s;
+}
+.bulk-cell-dd-item:hover { background: var(--surface3); }
+.bulk-cell-dd-item input[type=checkbox] { margin: 0; cursor: pointer; accent-color: var(--accent); }
+.bulk-cell-dd-empty { padding: 10px 12px; font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+/* ─── DELETE BUTTON ─── */
+.bulk-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  width: 100%;
+  transition: all 0.12s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.bulk-del-btn:hover { color: var(--red); background: var(--red-bg); }
+

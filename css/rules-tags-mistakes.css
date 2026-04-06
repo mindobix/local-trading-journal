@@ -1,0 +1,326 @@
+/* ─── TRADING RULES ─── */
+.rules-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.rule-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  font-size: 13px;
+  user-select: none;
+}
+.rule-item:hover { border-color: var(--green); }
+.rule-item input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--green);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.rule-item span { flex: 1; color: var(--text); }
+.rule-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.rule-icon-btn:hover { color: var(--green); }
+.rule-icon-btn.rule-save-btn:hover { color: var(--green); }
+.rule-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.rule-del-btn:hover { color: var(--red); }
+.rule-edit-input {
+  flex: 1;
+  background: var(--surface3);
+  border: 1px solid var(--green);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.rules-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.rules-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.rules-add-row input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.rules-add-row input:focus { border-color: var(--green); }
+.rules-add-btn { padding: 8px 16px; white-space: nowrap; }
+.trade-rule-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--green-bg);
+  border: 1px solid rgba(16,185,129,0.35);
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ─── CUSTOM TAGS ─── */
+.tags-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.tag-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  font-size: 13px;
+  user-select: none;
+}
+.tag-item:hover { border-color: var(--amber); }
+.tag-item input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--amber);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.tag-item span { flex: 1; color: var(--text); }
+.tag-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.tag-icon-btn:hover { color: var(--amber); }
+.tag-icon-btn.tag-save-btn:hover { color: var(--green); }
+.tag-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.tag-del-btn:hover { color: var(--red); }
+.tag-edit-input {
+  flex: 1;
+  background: var(--surface3);
+  border: 1px solid var(--amber);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.tags-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.tags-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.tags-add-row input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.tags-add-row input:focus { border-color: var(--amber); }
+.tags-add-btn { padding: 8px 16px; white-space: nowrap; }
+.trade-tag-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--amber-bg);
+  border: 1px solid rgba(245,158,11,0.35);
+  color: var(--amber);
+  font-size: 11px;
+  font-weight: 600;
+}
+.trade-mistake-badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 99px;
+  background: var(--red-bg);
+  border: 1px solid rgba(239,68,68,0.35);
+  color: var(--red);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+/* ─── MISTAKES ─── */
+.mistakes-box {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.mistake-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 0.15s;
+  font-size: 13px;
+  user-select: none;
+}
+.mistake-item:hover { border-color: var(--red); }
+.mistake-item input[type="checkbox"] {
+  width: 15px; height: 15px;
+  accent-color: var(--red);
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.mistake-item span { flex: 1; color: var(--text); }
+.mistake-icon-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.mistake-icon-btn:hover { color: var(--red); }
+.mistake-icon-btn.mistake-save-btn:hover { color: var(--green); }
+.mistake-del-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s;
+  flex-shrink: 0;
+}
+.mistake-del-btn:hover { color: var(--red); }
+.mistake-edit-input {
+  flex: 1;
+  background: var(--surface3);
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 4px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+}
+.mistakes-empty {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+.mistakes-add-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.mistakes-add-row input {
+  flex: 1;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 8px 11px;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.mistakes-add-row input:focus { border-color: var(--red); }
+.mistakes-add-btn { padding: 8px 16px; white-space: nowrap; }
+
+/* option fields toggle */
+.opt-section { display: none; }
+.opt-section.show { display: contents; }
+
+/* divider */
+.section-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 14px 0;
+}
+
+/* ─── DATE INPUT ICON ─── */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  opacity: 0.6;
+  cursor: pointer;
+}
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
+

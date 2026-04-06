@@ -8,8 +8,9 @@ const NEWS_POLL = 30000; // 30s UI poll interval
 // ─── localStorage keys ────────────────────────────────────────────────────────
 const NEWS_CONFIG_LS_KEY   = 'ltj_news_config';
 const NEWS_TAXONOMY_LS_KEY = 'ltj_news_taxonomy';
-const LLM_QUERIES_LS_KEY   = 'ltj_llm_queries';   // [{ id, llm, llmOther, prompt, createdAt }]
-const LLM_RESULTS_LS_KEY   = 'ltj_llm_results';   // { [id]: htmlString } — NOT in backup
+const LLM_QUERIES_LS_KEY    = 'ltj_llm_queries';    // [{ id, llm, llmOther, category, prompt, createdAt }]
+const LLM_RESULTS_LS_KEY    = 'ltj_llm_results';    // { [id]: htmlString } — NOT in backup
+const LLM_CATEGORIES_LS_KEY = 'ltj_llm_categories'; // [string] user-defined categories
 
 // Tabs that are always present, always first, and cannot be deleted.
 const PINNED_SYMS = ['MARKET', 'SPX', 'SPY', 'QQQ'];
@@ -21,24 +22,71 @@ function _lsGetNewsTaxonomy() { try { return JSON.parse(localStorage.getItem(NEW
 function _lsSaveNewsConfig(cfg)  { try { localStorage.setItem(NEWS_CONFIG_LS_KEY,   JSON.stringify(cfg));  } catch {} }
 function _lsSaveNewsTaxonomy(tx) { try { localStorage.setItem(NEWS_TAXONOMY_LS_KEY, JSON.stringify(tx));   } catch {} }
 
-// ─── LLM query storage ────────────────────────────────────────────────────────
-function _llmLoadQueries()  { try { return JSON.parse(localStorage.getItem(LLM_QUERIES_LS_KEY)) || []; } catch { return []; } }
-function _llmLoadResults()  { try { return JSON.parse(localStorage.getItem(LLM_RESULTS_LS_KEY)) || {}; } catch { return {}; } }
-function _llmSaveQueries(q) { try { localStorage.setItem(LLM_QUERIES_LS_KEY, JSON.stringify(q)); } catch {} }
-function _llmSaveResults(r) { try { localStorage.setItem(LLM_RESULTS_LS_KEY, JSON.stringify(r)); } catch {} }
+// ─── LLM storage helpers ──────────────────────────────────────────────────────
+function _llmLoadQueries()     { try { return JSON.parse(localStorage.getItem(LLM_QUERIES_LS_KEY))    || []; } catch { return []; } }
+function _llmLoadResults()     { try { return JSON.parse(localStorage.getItem(LLM_RESULTS_LS_KEY))    || {}; } catch { return {}; } }
+function _llmLoadCategories()  { try { return JSON.parse(localStorage.getItem(LLM_CATEGORIES_LS_KEY)) || []; } catch { return []; } }
+function _llmSaveQueries(q)    { try { localStorage.setItem(LLM_QUERIES_LS_KEY,    JSON.stringify(q)); } catch {} }
+function _llmSaveResults(r)    { try { localStorage.setItem(LLM_RESULTS_LS_KEY,    JSON.stringify(r)); } catch {} }
+function _llmSaveCategories(c) { try { localStorage.setItem(LLM_CATEGORIES_LS_KEY, JSON.stringify(c)); } catch {} }
+
+// ─── Default prompts (seeded on first load) ───────────────────────────────────
+const LLM_DEFAULT_PROMPTS = [
+  {
+    category: 'Trade Idea Generator',
+    llm: 'Grok',
+    prompt: 'Scan today\'s market and generate 5 high-probability trade setups for [insert stock/index/sector]. Include entry price, exit targets, stop-loss, and risk-to-reward ratio. Explain why each setup works based on technical and fundamental factors.',
+  },
+  {
+    category: 'Automated Technical Analyst',
+    llm: 'Grok',
+    prompt: 'Analyze [insert stock/ticker] using daily and weekly charts. Break down support/resistance levels, trendlines, moving averages, and momentum indicators. Provide a step-by-step trading signal (Buy/Hold/Sell) with justification.',
+  },
+  {
+    category: 'News-to-Trade Converter',
+    llm: 'Grok',
+    prompt: 'Summarize the latest news about [insert company/sector] and translate it into trading implications. Provide likely short-term and long-term effects, expected price movement range, and recommended positioning.',
+  },
+  {
+    category: 'Strategy Backtester',
+    llm: 'Grok',
+    prompt: 'Backtest [insert trading strategy: e.g., moving average crossover, RSI divergence] on [insert stock/index] over the last [insert time period]. Present win rate, profit factor, max drawdown, and improvements to increase edge.',
+  },
+  {
+    category: 'Fully Automated Trade Plan',
+    llm: 'Grok',
+    prompt: 'Design a daily trading plan for [insert market/asset]. Include pre-market scan, opening strategy, midday adjustments, and closing strategy. Deliver it as a time-stamped checklist I can follow like a professional trader.',
+  },
+  {
+    category: 'Stock Move & X.com Sentiment',
+    llm: 'Grok',
+    prompt: 'Please provide for the following tickers stock move today and sentiment from x.com summary report for SPX, QQQ, TSLA, NVDA, MU, SNDK, META, AMZN, GOOG, AAPL, MSFT, PLTR, NFLX, [add more tickers here]',
+  },
+];
 
 // ─── Public helpers for backup/restore ───────────────────────────────────────
-function getNewsConfigForBackup()   { return _news.config   || _lsGetNewsConfig();   }
-function getTaxonomyForBackup()     { return _news.taxonomy || _lsGetNewsTaxonomy(); }
-function getLlmQueriesForBackup()   { return _llm.queries; }  // prompts only — results excluded
-function restoreLlmQueries(queries) {
-  if (!Array.isArray(queries)) return;
-  // Merge by id — backup wins on conflict
+function getNewsConfigForBackup()    { return _news.config   || _lsGetNewsConfig();   }
+function getTaxonomyForBackup()      { return _news.taxonomy || _lsGetNewsTaxonomy(); }
+function getLlmQueriesForBackup()    { return { queries: _llm.queries, categories: _llm.categories }; }
+function restoreLlmQueries(data) {
+  // Support both old format (plain array) and new format ({ queries, categories })
+  const incoming         = Array.isArray(data) ? data : (data?.queries || []);
+  const incomingCats     = Array.isArray(data?.categories) ? data.categories : [];
+
+  // Merge prompts by id — backup wins on conflict
   const map = new Map(_llm.queries.map(q => [q.id, q]));
-  for (const q of queries) map.set(q.id, q);
+  for (const q of incoming) map.set(q.id, q);
   _llm.queries = [...map.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   _llmSaveQueries(_llm.queries);
-  if (_llm.activeTab === 'llm') _renderLlmPanel();
+
+  // Merge categories — deduplicate
+  if (incomingCats.length) {
+    const catSet = new Set([..._llm.categories, ...incomingCats]);
+    _llm.categories = [...catSet];
+    _llmSaveCategories(_llm.categories);
+  }
+
+  if (_news.activeTab === 'llm') _renderLlmPanel();
 }
 
 async function restoreNewsConfig(cfg) {
@@ -88,10 +136,11 @@ const _news = {
   activeTab:        'signal',    // 'signal' | 'llm'
 };
 
-// ─── LLM News state ───────────────────────────────────────────────────────────
+// ─── LLM Prompts state ────────────────────────────────────────────────────────
 const _llm = {
   queries:         [],   // loaded from localStorage on init
   results:         {},   // { [id]: htmlString } — in localStorage, not in backup
+  categories:      [],   // user-defined prompt categories
   activeQueryId:   null, // currently selected query in left panel
   editingQueryId:  null, // null = view mode, 'new' = new form, id = editing existing
 };
@@ -100,8 +149,26 @@ const _llm = {
 // ─── PUBLIC: called from switchView('news') ───────────────────────────────────
 async function initNewsView() {
   // Load LLM data from localStorage before rendering shell
-  _llm.queries = _llmLoadQueries();
-  _llm.results = _llmLoadResults();
+  _llm.queries    = _llmLoadQueries();
+  _llm.results    = _llmLoadResults();
+  _llm.categories = _llmLoadCategories();
+
+  // Seed default prompts and categories on first load
+  if (_llm.queries.length === 0) {
+    const defaultCats = [...new Set(LLM_DEFAULT_PROMPTS.map(p => p.category))];
+    _llm.categories   = defaultCats;
+    _llmSaveCategories(_llm.categories);
+
+    _llm.queries = LLM_DEFAULT_PROMPTS.map((p, i) => ({
+      id:        'llm_default_' + i,
+      llm:       p.llm,
+      llmOther:  '',
+      category:  p.category,
+      prompt:    p.prompt,
+      createdAt: new Date(Date.now() - i * 1000).toISOString(), // slight offset so order is stable
+    }));
+    _llmSaveQueries(_llm.queries);
+  }
 
   renderNewsShell();
   await Promise.all([loadNewsConfig(), loadNews(), _loadTaxonomy()]);
@@ -460,7 +527,7 @@ function _renderSymbolTabs() {
   // LLM News tab — always first, special styling
   const llmActive = _news.activeTab === 'llm';
   const llmTab = `<button class="news-sym-tab news-sym-tab-llm${llmActive ? ' active' : ''}"
-    onclick="_switchToLlmTab()">🤖 LLM News</button>`;
+    onclick="_switchToLlmTab()">🤖 LLM Prompts</button>`;
 
   const signalTabs = syms.map(s => {
     if (llmActive) return `<button class="news-sym-tab" onclick="_switchNewsSymbol('${_esc(s)}')">${_esc(s)}</button>`;
@@ -1450,7 +1517,31 @@ function _llmDisplayName(q) {
 
 function _llmColor(llm) { return LLM_COLORS[llm] || LLM_COLORS.Other; }
 
-// ─── Left panel — query list ──────────────────────────────────────────────────
+// Category pill colors — cycles through a palette keyed by category string
+const _CAT_PALETTE = [
+  { bg: 'rgba(99,102,241,0.18)',  color: '#a5b4fc' }, // indigo
+  { bg: 'rgba(16,185,129,0.18)',  color: '#6ee7b7' }, // green
+  { bg: 'rgba(245,158,11,0.18)',  color: '#fcd34d' }, // amber
+  { bg: 'rgba(239,68,68,0.18)',   color: '#fca5a5' }, // red
+  { bg: 'rgba(56,189,248,0.18)',  color: '#7dd3fc' }, // sky
+  { bg: 'rgba(168,85,247,0.18)',  color: '#d8b4fe' }, // purple
+  { bg: 'rgba(251,146,60,0.18)',  color: '#fdba74' }, // orange
+  { bg: 'rgba(20,184,166,0.18)',  color: '#5eead4' }, // teal
+];
+const _catColorCache = {};
+function _llmCatStyle(cat) {
+  if (!cat) return '';
+  if (!_catColorCache[cat]) {
+    // Deterministic hash so same category always gets same color
+    let h = 0;
+    for (let i = 0; i < cat.length; i++) h = (h * 31 + cat.charCodeAt(i)) >>> 0;
+    const p = _CAT_PALETTE[h % _CAT_PALETTE.length];
+    _catColorCache[cat] = `background:${p.bg};color:${p.color}`;
+  }
+  return _catColorCache[cat];
+}
+
+// ─── Left panel — prompt list ─────────────────────────────────────────────────
 function _renderLlmList() {
   const el = document.getElementById('llm-left-panel');
   if (!el) return;
@@ -1459,7 +1550,8 @@ function _renderLlmList() {
     const name   = _llmDisplayName(q);
     const color  = _llmColor(q.llm);
     const date   = q.createdAt ? new Date(q.createdAt).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
-    const prompt = q.prompt ? q.prompt.slice(0, 80) + (q.prompt.length > 80 ? '…' : '') : '';
+    const cat    = q.category ? `<span class="llm-qrow-cat" style="${_llmCatStyle(q.category)}">${_esc(q.category)}</span>` : '';
+    const preview = q.prompt || '';
     const active = _llm.activeQueryId === q.id;
     return `
       <div class="llm-query-row${active ? ' active' : ''}" onclick="_llmSelectQuery('${_esc(q.id)}')">
@@ -1467,17 +1559,21 @@ function _renderLlmList() {
           <span class="llm-qrow-badge" style="background:${color}">${_esc(name)}</span>
           <span class="llm-qrow-date">${_esc(date)}</span>
         </div>
-        <div class="llm-qrow-prompt">${_esc(prompt)}</div>
+        ${cat}
+        <div class="llm-qrow-prompt">${_esc(preview)}</div>
       </div>`;
   }).join('');
 
   el.innerHTML = `
     <div class="llm-list-hdr">
-      <span class="llm-list-title">LLM Queries</span>
-      <button class="llm-new-btn" onclick="_llmNewQuery()">+ New</button>
+      <span class="llm-list-title">LLM Prompts</span>
+      <div class="llm-list-hdr-actions">
+        <button class="llm-reseed-btn" onclick="_llmReseedDefaults()" title="Restore missing default prompts">↺ Defaults</button>
+        <button class="llm-new-btn" onclick="_llmNewQuery()">+ New Prompt</button>
+      </div>
     </div>
     <div class="llm-list-body">
-      ${items || '<div class="llm-empty-list">No queries yet.<br>Tap + New to add one.</div>'}
+      ${items || '<div class="llm-empty-list">No prompts yet.<br>Tap + New Prompt to add one.</div>'}
     </div>`;
 }
 
@@ -1492,7 +1588,7 @@ function _renderLlmRight() {
     if (el) el.innerHTML = `
       <div class="llm-placeholder">
         <span style="font-size:32px">🤖</span>
-        <div>Select a query to view, or tap <strong>+ New</strong> to add one.</div>
+        <div>Select a prompt to view, or tap <strong>+ New Prompt</strong> to add one.</div>
       </div>`;
   }
 }
@@ -1508,12 +1604,14 @@ function _renderLlmView() {
   const color   = _llmColor(q.llm);
   const date    = q.createdAt ? new Date(q.createdAt).toLocaleString('en-US', { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
   const results = _llm.results[q.id] || '';
+  const catBadge = q.category ? `<span class="llm-view-cat" style="${_llmCatStyle(q.category)}">${_esc(q.category)}</span>` : '';
 
   el.innerHTML = `
     <div class="llm-view-wrap">
       <div class="llm-view-hdr">
         <div class="llm-view-hdr-left">
           <span class="llm-view-badge" style="background:${color}">${_esc(name)}</span>
+          ${catBadge}
           <span class="llm-view-date">${_esc(date)}</span>
         </div>
         <div class="llm-view-actions">
@@ -1548,17 +1646,28 @@ function _renderLlmForm() {
   const isNew = _llm.editingQueryId === 'new';
   const q     = isNew ? null : _llm.queries.find(x => x.id === _llm.editingQueryId);
 
-  const currentLlm  = q?.llm  || 'ChatGPT';
-  const currentOther = q?.llmOther || '';
-  const currentPrompt = q?.prompt || '';
+  const currentLlm    = q?.llm      || 'Grok';
+  const currentOther  = q?.llmOther || '';
+  const currentCat    = q?.category || '';
+  const currentPrompt = q?.prompt   || '';
 
   const llmOptions = LLM_TYPES.map(t =>
     `<option value="${t}"${t === currentLlm ? ' selected' : ''}>${t}</option>`
   ).join('');
 
+  // Category datalist + existing pills
+  const catOptions = _llm.categories.map(c =>
+    `<option value="${_esc(c)}"></option>`
+  ).join('');
+  const catPills = _llm.categories.map(c =>
+    `<span class="llm-cat-pill" style="${_llmCatStyle(c)}" onclick="_llmPickCat('${_esc(c)}')" title="Use this category">${_esc(c)}
+       <button class="llm-cat-pill-del" onclick="event.stopPropagation();_llmDeleteCat('${_esc(c)}')" title="Delete category">&#10005;</button>
+     </span>`
+  ).join('');
+
   el.innerHTML = `
     <div class="llm-form-wrap">
-      <div class="llm-form-hdr">${isNew ? 'New LLM Query' : 'Edit Query'}</div>
+      <div class="llm-form-hdr">${isNew ? 'New LLM Prompt' : 'Edit Prompt'}</div>
 
       <div class="llm-form-field">
         <label class="llm-form-label">LLM</label>
@@ -1573,8 +1682,22 @@ function _renderLlmForm() {
       </div>
 
       <div class="llm-form-field">
+        <label class="llm-form-label">Prompt Category
+          <span class="llm-form-label-hint">— type new or pick existing</span>
+        </label>
+        <div class="llm-form-cat-row">
+          <input class="llm-form-input" id="llm-f-cat" list="llm-cat-list"
+                 placeholder="e.g. Trade Idea Generator"
+                 value="${_esc(currentCat)}">
+          <datalist id="llm-cat-list">${catOptions}</datalist>
+          <button class="llm-cat-add-btn" onclick="_llmAddCatFromInput()" title="Save as new category">+ Save</button>
+        </div>
+        ${catPills ? `<div class="llm-cat-pills-row">${catPills}</div>` : ''}
+      </div>
+
+      <div class="llm-form-field">
         <label class="llm-form-label">Prompt</label>
-        <textarea class="llm-form-textarea" id="llm-f-prompt" placeholder="Paste the prompt you used…" rows="5">${_esc(currentPrompt)}</textarea>
+        <textarea class="llm-form-textarea" id="llm-f-prompt" placeholder="Paste the prompt you used…" rows="6">${_esc(currentPrompt)}</textarea>
       </div>
 
       <div class="llm-form-actions">
@@ -1658,7 +1781,7 @@ function _llmEditQuery(id) {
 
 function _llmDeleteQuery(id) {
   const q = _llm.queries.find(x => x.id === id);
-  if (!confirm(`Delete this ${q ? _llmDisplayName(q) : ''} query?`)) return;
+  if (!confirm(`Delete this ${q ? _llmDisplayName(q) : ''} prompt?`)) return;
   _llm.queries = _llm.queries.filter(x => x.id !== id);
   delete _llm.results[id];
   _llmSaveQueries(_llm.queries);
@@ -1676,22 +1799,29 @@ function _llmToggleOther() {
 }
 
 function _llmSaveForm(idOrNew) {
-  const llm    = document.getElementById('llm-f-type')?.value || 'ChatGPT';
-  const other  = document.getElementById('llm-f-other')?.value.trim() || '';
-  const prompt = document.getElementById('llm-f-prompt')?.value.trim() || '';
+  const llm      = document.getElementById('llm-f-type')?.value || 'Grok';
+  const other    = document.getElementById('llm-f-other')?.value.trim() || '';
+  const category = document.getElementById('llm-f-cat')?.value.trim() || '';
+  const prompt   = document.getElementById('llm-f-prompt')?.value.trim() || '';
   if (!prompt) { alert('Please enter a prompt.'); return; }
+
+  // Auto-save the typed category if it's new
+  if (category && !_llm.categories.includes(category)) {
+    _llm.categories.push(category);
+    _llmSaveCategories(_llm.categories);
+  }
 
   if (idOrNew === 'new') {
     const entry = {
       id:        'llm_' + Date.now() + '_' + Math.random().toString(36).slice(2,7),
-      llm, llmOther: other, prompt,
+      llm, llmOther: other, category, prompt,
       createdAt: new Date().toISOString(),
     };
     _llm.queries.unshift(entry);
     _llm.activeQueryId = entry.id;
   } else {
     const q = _llm.queries.find(x => x.id === idOrNew);
-    if (q) { q.llm = llm; q.llmOther = other; q.prompt = prompt; }
+    if (q) { q.llm = llm; q.llmOther = other; q.category = category; q.prompt = prompt; }
   }
 
   _llm.editingQueryId = null;
@@ -1703,6 +1833,69 @@ function _llmSaveForm(idOrNew) {
 function _llmCancelForm() {
   _llm.editingQueryId = null;
   _renderLlmRight();
+}
+
+function _llmAddCatFromInput() {
+  const inp = document.getElementById('llm-f-cat');
+  if (!inp) return;
+  const cat = inp.value.trim();
+  if (!cat) return;
+  if (!_llm.categories.includes(cat)) {
+    _llm.categories.push(cat);
+    _llmSaveCategories(_llm.categories);
+  }
+  _renderLlmForm();
+  // Restore the typed value after re-render
+  const inp2 = document.getElementById('llm-f-cat');
+  if (inp2) inp2.value = cat;
+}
+
+function _llmPickCat(cat) {
+  const inp = document.getElementById('llm-f-cat');
+  if (inp) inp.value = cat;
+}
+
+function _llmDeleteCat(cat) {
+  _llm.categories = _llm.categories.filter(c => c !== cat);
+  _llmSaveCategories(_llm.categories);
+  // Preserve the current input value across re-render
+  const currentVal = document.getElementById('llm-f-cat')?.value || '';
+  _renderLlmForm();
+  const inp = document.getElementById('llm-f-cat');
+  if (inp && currentVal !== cat) inp.value = currentVal;
+}
+
+function _llmReseedDefaults() {
+  const existingIds = new Set(_llm.queries.map(q => q.id));
+  let added = 0;
+
+  // Re-add any default that is no longer present (matched by stable id llm_default_N)
+  LLM_DEFAULT_PROMPTS.forEach((p, i) => {
+    const id = 'llm_default_' + i;
+    if (!existingIds.has(id)) {
+      _llm.queries.push({
+        id,
+        llm:       p.llm,
+        llmOther:  '',
+        category:  p.category,
+        prompt:    p.prompt,
+        createdAt: new Date(Date.now() - i * 1000).toISOString(),
+      });
+      added++;
+    }
+  });
+
+  // Merge default categories
+  const defaultCats = [...new Set(LLM_DEFAULT_PROMPTS.map(p => p.category))];
+  defaultCats.forEach(c => { if (!_llm.categories.includes(c)) _llm.categories.push(c); });
+
+  _llmSaveQueries(_llm.queries);
+  _llmSaveCategories(_llm.categories);
+  _renderLlmList();
+  _renderLlmRight();
+
+  if (added === 0) alert('All default prompts are already present.');
+  else alert(`${added} default prompt${added > 1 ? 's' : ''} restored.`);
 }
 
 function _llmCommitResults(id) {

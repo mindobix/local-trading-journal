@@ -1,0 +1,183 @@
+/* ─── MAIN ─── */
+.main { padding: 16px 28px 32px; }
+
+/* ─── CALENDAR NAV ─── */
+.cal-nav {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.month-label { font-size: 20px; font-weight: 700; min-width: 210px; }
+.arrow-btn {
+  width: 34px; height: 34px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 16px;
+  display: flex; align-items: center; justify-content: center;
+  transition: all 0.15s;
+}
+.arrow-btn:hover { background: var(--surface2); border-color: var(--accent); }
+.today-btn {
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.today-btn:hover { border-color: var(--accent); color: var(--text); }
+.monthly-pnl {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  margin-left: 8px;
+}
+
+/* ─── CALENDAR GRID ─── */
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 5px;
+}
+.day-hdr {
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  padding: 10px 0;
+}
+.day-cell {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px 16px;
+  min-height: 116px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  position: relative;
+}
+.day-cell:hover { border-color: var(--accent); background: var(--surface2); }
+.day-cell.other-month { opacity: 0.28; pointer-events: none; }
+.day-cell.is-today { border-color: var(--accent); }
+.day-cell.win-day { border-left: 3px solid var(--green); }
+.day-cell.loss-day { border-left: 3px solid var(--red); }
+.day-cell.open-day { border-left: 3px solid var(--amber); }
+.day-num {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.day-cell.is-today .day-num {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px;
+  background: var(--accent);
+  color: #fff;
+  border-radius: 50%;
+  font-size: 13px;
+}
+.day-pnl {
+  font-size: 18px;
+  font-weight: 800;
+  margin-top: 12px;
+  line-height: 1;
+}
+.day-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 6px;
+}
+.day-count.day-partial {
+  color: var(--accent);
+  opacity: 0.85;
+}
+.day-open-pnl {
+  font-size: 15px;
+  font-weight: 700;
+  margin-top: 8px;
+  line-height: 1;
+  color: var(--amber);
+}
+.day-open-count {
+  font-size: 11px;
+  color: var(--amber);
+  opacity: 0.8;
+  margin-top: 4px;
+}
+
+/* ─── CALENDAR + WEEKLY LAYOUT ─── */
+.cal-week-layout {
+  display: flex;
+  gap: 0;
+  align-items: flex-start;
+}
+.cal-main { flex: 1; min-width: 0; }
+.cal-divider {
+  width: 1px;
+  background: var(--border);
+  align-self: stretch;
+  margin: 0 18px;
+  flex-shrink: 0;
+}
+.weekly-panel {
+  width: 210px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 42px;
+}
+
+/* ─── WEEK BOX ─── */
+.week-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  min-height: 116px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  border-left: 3px solid var(--border);
+}
+.week-box:hover { border-color: var(--accent); background: var(--surface2); }
+.week-box.week-win  { border-left-color: var(--green); }
+.week-box.week-loss { border-left-color: var(--red); }
+.week-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+.week-dates {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+.week-pnl {
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1;
+  margin-bottom: 5px;
+}
+.week-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.week-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+
