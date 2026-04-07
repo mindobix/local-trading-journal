@@ -123,7 +123,14 @@
   color: #fff;
   white-space: nowrap;
 }
-.llm-qrow-date { font-size: 10px; color: var(--text-muted); }
+.llm-qrow-date { font-size: 10px; color: var(--text-muted); margin-left: auto; }
+.llm-qrow-results-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
 .llm-qrow-prompt { font-size: 11px; color: var(--text-muted); line-height: 1.4; word-break: break-word; }
 
 /* Right panel placeholder */

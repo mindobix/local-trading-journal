@@ -1547,17 +1547,22 @@ function _renderLlmList() {
   if (!el) return;
 
   const items = _llm.queries.map(q => {
-    const name   = _llmDisplayName(q);
-    const color  = _llmColor(q.llm);
-    const date   = q.createdAt ? new Date(q.createdAt).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
-    const cat    = q.category ? `<span class="llm-qrow-cat" style="${_llmCatStyle(q.category)}">${_esc(q.category)}</span>` : '';
-    const preview = q.prompt || '';
-    const active = _llm.activeQueryId === q.id;
+    const name       = _llmDisplayName(q);
+    const color      = _llmColor(q.llm);
+    const hasResults = !!((_llm.results[q.id] || '').trim());
+    const dateSrc    = hasResults && q.resultsAt ? q.resultsAt : q.createdAt;
+    const date       = dateSrc ? new Date(dateSrc).toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+    const dateLabel  = hasResults && q.resultsAt ? `updated ${date}` : date;
+    const cat        = q.category ? `<span class="llm-qrow-cat" style="${_llmCatStyle(q.category)}">${_esc(q.category)}</span>` : '';
+    const preview    = q.prompt || '';
+    const active     = _llm.activeQueryId === q.id;
+    const resultsDot = hasResults ? `<span class="llm-qrow-results-dot" title="Has results"></span>` : '';
     return `
       <div class="llm-query-row${active ? ' active' : ''}" onclick="_llmSelectQuery('${_esc(q.id)}')">
         <div class="llm-qrow-top">
           <span class="llm-qrow-badge" style="background:${color}">${_esc(name)}</span>
-          <span class="llm-qrow-date">${_esc(date)}</span>
+          ${resultsDot}
+          <span class="llm-qrow-date">${_esc(dateLabel)}</span>
         </div>
         ${cat}
         <div class="llm-qrow-prompt">${_esc(preview)}</div>
@@ -1902,8 +1907,15 @@ function _llmCommitResults(id) {
   const html = document.getElementById('llm-rich-editor')?.innerHTML || '';
   _llm.results[id] = html;
   _llmSaveResults(_llm.results);
+  // Stamp the query with when results were last saved
+  const q = _llm.queries.find(x => x.id === id);
+  if (q) {
+    q.resultsAt = new Date().toISOString();
+    _llmSaveQueries(_llm.queries);
+  }
   _llm.activeQueryId  = id;
   _llm.editingQueryId = null;
+  _renderLlmList();
   _renderLlmView();
 }
 
