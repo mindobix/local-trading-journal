@@ -12,7 +12,7 @@
 <header class="header">
   <div class="logo">
     <div class="logo-name">Local<span class="logo-sep"> &rsaquo; </span><span class="logo-trade">Trade</span>Journal</div>
-    <div class="logo-version" id="app-version"></div>
+    <div class="logo-version" id="app-version">v1.0.2</div>
   </div>
   <nav class="nav">
     <button class="nav-btn active" id="nav-cal" onclick="switchView('calendar')">Calendar</button>
@@ -638,11 +638,5 @@
 <script src="js/bulk.js"></script>
 <script src="js/news.js"></script>
 <script src="js/app.js"></script>
-<script>
-  fetch('version.json').then(r => r.json()).then(d => {
-    const el = document.getElementById('app-version');
-    if (el) el.textContent = 'v' + d.version;
-  }).catch(() => {});
-</script>
 </body>
 </html>
