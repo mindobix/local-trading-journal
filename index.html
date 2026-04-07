@@ -178,13 +178,44 @@
   <!-- Reports View -->
   <div id="view-reports" style="display:none">
     <div class="reports-layout">
-      <div class="reports-subtabs">
-        <button class="report-subtab active" id="rtab-days"      onclick="switchReportTab('days')">Days</button>
-        <button class="report-subtab"        id="rtab-months"    onclick="switchReportTab('months')">Months</button>
-        <button class="report-subtab"        id="rtab-tradetime" onclick="switchReportTab('tradetime')">Trade time</button>
-        <button class="report-subtab"        id="rtab-duration"  onclick="switchReportTab('duration')">Trade duration</button>
+      <!-- Primary report-type tabs -->
+      <div class="reports-type-tabs">
+        <button class="report-type-tab active" id="rtype-daytime" onclick="switchReportType('daytime')">Day &amp; Time</button>
+        <button class="report-type-tab"        id="rtype-risk"    onclick="switchReportType('risk')">Risk</button>
+        <button class="report-type-tab"        id="rtype-ticker"  onclick="switchReportType('ticker')">Ticker Symbols</button>
+        <button class="report-type-tab"        id="rtype-tags"    onclick="switchReportType('tags')">Tags</button>
+        <button class="report-type-tab"        id="rtype-dte"     onclick="switchReportType('dte')">Options: DTE</button>
+        <button class="report-type-tab"        id="rtype-perf"    onclick="switchReportType('perf')">Performance</button>
       </div>
-      <div id="reports-content"></div>
+      <!-- Panel: sub-tabs + content -->
+      <div class="reports-panel">
+        <!-- Sub-tabs: Day & Time -->
+        <div class="reports-subtabs" id="reports-subtabs-row">
+          <button class="report-subtab active" id="rtab-days"      onclick="switchReportTab('days')">Days</button>
+          <button class="report-subtab"        id="rtab-months"    onclick="switchReportTab('months')">Months</button>
+          <button class="report-subtab"        id="rtab-tradetime" onclick="switchReportTab('tradetime')">Trade time</button>
+          <button class="report-subtab"        id="rtab-duration"  onclick="switchReportTab('duration')">Trade duration</button>
+        </div>
+        <!-- Sub-tabs: Ticker Symbols -->
+        <div class="reports-subtabs" id="reports-ticker-subtabs-row" style="display:none">
+          <button class="report-subtab active" id="rstab-symbols"   onclick="switchTickerTab('symbols')">Symbols</button>
+          <button class="report-subtab"        id="rstab-tradetype" onclick="switchTickerTab('tradetype')">Trade Types</button>
+          <button class="report-subtab"        id="rstab-prices"    onclick="switchTickerTab('prices')">Prices</button>
+        </div>
+        <!-- Sub-tabs: Tags -->
+        <div class="reports-subtabs" id="reports-tags-subtabs-row" style="display:none">
+          <button class="report-subtab"        id="tabtab-customtags"    onclick="switchTagsTab('customtags')">Custom Tags</button>
+          <button class="report-subtab active" id="tabtab-mistakes"      onclick="switchTagsTab('mistakes')">Mistakes</button>
+          <button class="report-subtab"        id="tabtab-tradingrules"  onclick="switchTagsTab('tradingrules')">Trading Rules</button>
+        </div>
+        <!-- Sub-tabs: Performance -->
+        <div class="reports-subtabs" id="reports-perf-subtabs-row" style="display:none">
+          <button class="report-subtab active" id="ptab-summary" onclick="switchPerfTab('summary')">Summary</button>
+          <button class="report-subtab"        id="ptab-days"    onclick="switchPerfTab('days')">Days</button>
+          <button class="report-subtab"        id="ptab-trades"  onclick="switchPerfTab('trades')">Trades</button>
+        </div>
+        <div id="reports-content"></div>
+      </div>
     </div>
   </div>
 

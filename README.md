@@ -70,10 +70,26 @@ A full three-view (Monthly / Weekly / Daily) option trade plan tracker:
 - If no weekend prep cards exist for a week, the section is hidden entirely
 
 ### Performance Reports
-- Win rate, profit factor, average win vs. average loss
-- Best/worst day, best/worst month
-- Trade duration analysis
-- Monthly and daily P&L breakdowns
+
+A multi-tab report suite with a primary tab bar (Day & Time, Risk, Ticker Symbols, Tags, Options: DTE, Performance) and secondary sub-tabs within each. Every report type includes a **Cross Analysis** section — a dynamic table that cross-references any row group against configurable columns (Top 10 / Bottom 10 symbols, Trade Type, Tags, Mistakes, Trading Rules, Day of Week, Trade Duration, Week, Year, Position Size, Volume) with Win Rate / P&L / Trades toggle.
+
+**Day & Time** — four sub-tabs: Days, Months, Trade Time, Trade Duration. Each shows highlight cards, a summary table, and cross analysis.
+
+**Risk** — R-multiple performance bucketed from "−4R or worse" through "+4R and more". Highlight cards, summary table, and cross analysis scoped to R-multiple buckets.
+
+**Ticker Symbols** — three sub-tabs:
+- *Symbols* — per-symbol P&L, win rate, trade count
+- *Trade Types* — stock vs. option breakdown
+- *Prices* — price-range bucket analysis
+
+**Tags** — three sub-tabs (Custom Tags, Mistakes, Trading Rules). Each shows top 4 highlight cards, a summary table, and cross analysis scoped to that tag set.
+
+**Options: DTE** — Days Till Expiration analysis for option trades only. Buckets trades from "Same day" through "10+ days", with highlight cards, a summary table, and cross analysis.
+
+**Performance** — three sub-tabs with a clean 4-column stats grid (no tables or charts — pure key metrics):
+- *Summary* — 16 metrics across 4 rows: Net P&L, Trade Expectancy, Avg Net Trade P&L, Avg Daily Volume, Win %, Avg Daily Win/Loss, Avg Daily Net P&L, Logged Days, Avg Daily Win % (wins/ties/losses), Avg Trade Win/Loss, Avg. Planned R-Multiple, Max Daily Net Drawdown, Profit Factor, Avg Hold Time, Avg. Realized R-Multiple, Avg Daily Net Drawdown
+- *Days* — day-level metrics: Avg Daily Win %, Avg Daily Win/Loss, Largest Profitable Day, Avg Daily Net P&L, Largest Losing Day, Avg Trading Day Duration
+- *Trades* — trade-level metrics: Win %, Avg Trade Win/Loss, Largest Profitable Trade, Longest Trade Duration, Longs Win %, Trade Expectancy, Largest Losing Trade, Shorts Win %, Avg Net Trade P&L, Avg Trading Day Duration
 
 ### Smart Filtering
 Filter any view by date range, symbol, tags, mistakes, rules, trade type, and more. Include/exclude modes let you drill into exactly the subset of trades you want to analyze.
