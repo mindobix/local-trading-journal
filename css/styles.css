@@ -16,3 +16,4 @@
 @import url('bulk-entry.css');        /* Bulk trade entry spreadsheet view     */
 @import url('news.css');              /* Signal news tab                       */
 @import url('llm.css');               /* LLM news tab                          */
+@import url('llm-trade-plan.css');    /* LLM Trade Plan tab                    */

@@ -133,7 +133,7 @@ const _news = {
   prices:           {},          // symbol → { price, change, changePct, updatedAt }
   prevReportIds:    {},          // symbol → Set of article IDs from the prior report (for NEW pill)
   prevReportGenAt:  {},          // symbol → generatedAt of the prior report
-  activeTab:        'allsignals', // 'signal' | 'llm' | 'allsignals'
+  activeTab:        'allsignals', // 'signal' | 'llm' | 'allsignals' | 'llmtradeplan'
   allReports:       {},          // sym → report cache for all-signals view
 };
 
@@ -529,6 +529,7 @@ function renderNewsShell() {
 
   // Render the initial body based on which tab was last active
   if (_news.activeTab === 'llm') _showLlmBody();
+  else if (_news.activeTab === 'llmtradeplan') { const b = document.getElementById('news-body'); if (b && typeof ltpShowInBody === 'function') ltpShowInBody(b); }
   else if (_news.activeTab === 'allsignals') { _showAllSignalsBody(); _loadAllReports(); }
   else _showSignalBody();
 }
@@ -540,11 +541,15 @@ function _renderSymbolTabs() {
   const userSyms = (_news.config?.symbols || []).filter(s => !PINNED_SYMS.includes(s));
   const syms = [...PINNED_SYMS, ...userSyms];
 
-  const llmActive    = _news.activeTab === 'llm';
-  const allsigActive = _news.activeTab === 'allsignals';
+  const llmActive        = _news.activeTab === 'llm';
+  const allsigActive     = _news.activeTab === 'allsignals';
+  const llmTradePlanActive = _news.activeTab === 'llmtradeplan';
 
   const llmTab = `<button class="news-sym-tab news-sym-tab-llm${llmActive ? ' active' : ''}"
     onclick="_switchToLlmTab()">🤖 LLM Prompts</button>`;
+
+  const llmTradePlanTab = `<button class="news-sym-tab news-sym-tab-llm${llmTradePlanActive ? ' active' : ''}"
+    onclick="_switchToLlmTradePlanTab()">📋 LLM Trade Plan</button>`;
 
   const allsigTab = `<button class="news-sym-tab news-sym-tab-allsig${allsigActive ? ' active' : ''}"
     onclick="_switchToAllSignalsTab()">📡 New Signals</button>`;
@@ -560,7 +565,14 @@ function _renderSymbolTabs() {
              onclick="_switchNewsSymbol('${_esc(s)}')">${dot}${_esc(s)}</button>`;
   }).join('');
 
-  el.innerHTML = llmTab + allsigTab + signalTabs;
+  el.innerHTML = llmTab + llmTradePlanTab + allsigTab + signalTabs;
+}
+
+function _switchToLlmTradePlanTab() {
+  _news.activeTab = 'llmtradeplan';
+  _renderSymbolTabs();
+  const body = document.getElementById('news-body');
+  if (body && typeof ltpShowInBody === 'function') ltpShowInBody(body);
 }
 
 function _switchToLlmTab() {

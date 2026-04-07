@@ -4,6 +4,7 @@
 
 let _ideaEditId      = null;
 let _ideaDefaultWeek = null;
+let _ideaPostSaveHook = null; // optional callback(idea) after saveIdea()
 
 // ── 24 preset colors ──────────────────────────────────────────────
 const IDEA_PRESET_COLORS = [
@@ -164,6 +165,7 @@ function saveIdea() {
   saveIdeas(ideas);
   closeIdeaModal();
   renderPlanView();
+  if (typeof _ideaPostSaveHook === 'function') { _ideaPostSaveHook(idea); _ideaPostSaveHook = null; }
 }
 
 function deleteIdea(id) {
@@ -173,7 +175,11 @@ function deleteIdea(id) {
 }
 
 // ── Init ──────────────────────────────────────────────────────────
+let _ideaModalReady = false;
+
 function initIdeaModal() {
+  if (_ideaModalReady) return;
+  _ideaModalReady = true;
   _buildIdeaSwatches();
 
   document.getElementById('idea-overlay').addEventListener('click', closeIdeaModal);

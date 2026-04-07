@@ -1,0 +1,491 @@
+/* ── llm-trade-plan.css ── LLM Trade Plan tab ────────────────────── */
+
+/* ── Layout ──────────────────────────────────────────────────────── */
+
+.ltp-layout {
+  display: flex;
+  flex: 1;
+  align-self: stretch;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ── Left panel ─────────────────────────────────────────────────── */
+
+.ltp-left {
+  width: 240px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.ltp-left-header {
+  padding: 10px 12px 10px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ltp-left-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.ltp-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.ltp-list-empty {
+  padding: 24px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+.ltp-list-item {
+  padding: 10px 14px 12px;
+  cursor: pointer;
+  border-left: 3px solid transparent;
+  transition: background 0.12s, border-color 0.12s;
+}
+
+.ltp-list-item:hover {
+  background: var(--surface2);
+}
+
+.ltp-list-item.active {
+  background: var(--surface2);
+  border-left-color: var(--accent);
+}
+
+.ltp-list-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 5px;
+}
+
+.ltp-list-sym {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ltp-list-detail {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.ltp-detail-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.ltp-detail-val {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.ltp-list-notes {
+  margin-top: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+  line-height: 1.45;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ltp-list-bottom {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ltp-list-updated {
+  font-size: 10px;
+  color: rgba(255,255,255,0.28);
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+/* Pills */
+
+.ltp-type-pill {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 1px 5px;
+  border-radius: 3px;
+  text-transform: uppercase;
+}
+
+.ltp-type-pill.call {
+  background: var(--green-bg);
+  color: var(--green);
+}
+
+.ltp-type-pill.put {
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.ltp-source-pill {
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 110px;
+}
+
+/* ── Right panel ────────────────────────────────────────────────── */
+
+.ltp-right {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: var(--bg);
+}
+
+.ltp-right-inner {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+/* ── Empty / New state ──────────────────────────────────────────── */
+
+.ltp-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  gap: 16px;
+  text-align: center;
+}
+
+.ltp-new-btn {
+  padding: 10px 22px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ltp-new-btn:hover {
+  background: var(--accent-hover);
+}
+
+.ltp-empty-hint {
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.6;
+}
+
+/* ── Editor header meta + actions ───────────────────────────────── */
+
+.ltp-editor-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.ltp-view-date {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.ltp-transfer-btn {
+  padding: 7px 16px;
+  background: transparent;
+  border: 1px solid var(--green);
+  border-radius: var(--radius);
+  color: var(--green);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.ltp-transfer-btn:hover {
+  background: var(--green-bg);
+}
+
+.ltp-edit-icon-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 13px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ltp-edit-icon-btn svg {
+  width: 13px;
+  height: 13px;
+}
+
+.ltp-edit-icon-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* ── Editor ─────────────────────────────────────────────────────── */
+
+.ltp-editor-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1100px;
+}
+
+.ltp-editor-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ltp-editor-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  flex: 1;
+}
+
+.ltp-editor-btns {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.ltp-cancel-btn {
+  padding: 7px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.ltp-cancel-btn:hover {
+  border-color: var(--text-muted);
+  color: var(--text);
+}
+
+.ltp-save-btn {
+  padding: 7px 16px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ltp-save-btn:hover {
+  background: var(--accent-hover);
+}
+
+.ltp-del-btn {
+  padding: 7px 13px;
+  background: transparent;
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  color: var(--red);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.ltp-del-btn:hover {
+  background: var(--red-bg);
+}
+
+/* ── Form fields ────────────────────────────────────────────────── */
+
+.ltp-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ltp-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ltp-label-hint {
+  font-weight: 400;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--text-dim);
+}
+
+.ltp-source-input {
+  width: 300px;
+  max-width: 100%;
+  padding: 8px 11px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 13px;
+  transition: border-color 0.15s;
+}
+
+.ltp-source-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* ── Two-column JSON + Preview ──────────────────────────────────── */
+
+.ltp-cols {
+  display: flex;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.ltp-col-json {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.ltp-col-preview {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.ltp-json-editor {
+  width: 100%;
+  min-height: 560px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+
+.ltp-json-editor:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.ltp-json-error {
+  font-size: 11px;
+  color: var(--red);
+  padding: 4px 8px;
+  background: var(--red-bg);
+  border-radius: var(--radius);
+  word-break: break-all;
+}
+
+/* ── Preview area ───────────────────────────────────────────────── */
+
+.ltp-preview-wrap {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.ltp-preview-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ltp-preview-label-row .ltp-label {
+  margin-bottom: 0;
+}
+
+.ltp-preview-body {
+  min-height: 180px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px 12px;
+}
+
+.ltp-preview-empty {
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.6;
+  align-self: center;
+}
+
+.ltp-preview-card {
+  pointer-events: none;
+  user-select: none;
+}
+
+.ltp-preview-card .option-card {
+  cursor: default;
+}

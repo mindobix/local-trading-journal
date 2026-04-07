@@ -284,7 +284,8 @@ function backupData() {
     ideas:        loadIdeas(),
     newsConfig:   typeof getNewsConfigForBackup   === 'function' ? getNewsConfigForBackup()   : null,
     newsTaxonomy: typeof getTaxonomyForBackup     === 'function' ? getTaxonomyForBackup()     : null,
-    llmQueries:   typeof getLlmQueriesForBackup   === 'function' ? getLlmQueriesForBackup()   : null,
+    llmQueries:      typeof getLlmQueriesForBackup       === 'function' ? getLlmQueriesForBackup()       : null,
+    llmTradePlans:   typeof getLlmTradePlansForBackup    === 'function' ? getLlmTradePlansForBackup()    : null,
   };
   const json  = JSON.stringify(backup, null, 2);
   const blob  = new Blob([json], { type: 'application/json' });
@@ -421,6 +422,9 @@ function restoreData(event) {
       restoreLlmQueries(incoming.llmQueries);
       restoredLlmQueries = true;
     }
+    if (incoming.llmTradePlans && typeof restoreLlmTradePlansFromBackup === 'function') {
+      restoreLlmTradePlansFromBackup(incoming.llmTradePlans);
+    }
 
     event.target.value = '';
 
@@ -481,6 +485,7 @@ document.addEventListener('keydown', e => {
 });
 
 // init
+initIdeaModal();
 updateFilterBarContext('calendar');
 renderStats();
 renderCalendar();
