@@ -547,7 +547,7 @@ function _renderSymbolTabs() {
     onclick="_switchToLlmTab()">🤖 LLM Prompts</button>`;
 
   const allsigTab = `<button class="news-sym-tab news-sym-tab-allsig${allsigActive ? ' active' : ''}"
-    onclick="_switchToAllSignalsTab()">📡 All Signals</button>`;
+    onclick="_switchToAllSignalsTab()">📡 New Signals</button>`;
 
   const signalTabs = syms.map(s => {
     const isRunning = _news.reportsRunning.has(s);
@@ -659,6 +659,13 @@ async function _loadAllReports() {
           const rep = c.representative;
           if (rep?.id) _news.articlesById[rep.id] = { ...rep, symbol: sym };
         }
+        // Load prevReportIds from localStorage if not already in memory
+        if (!_news.prevReportIds[sym]) {
+          try {
+            const ids = JSON.parse(localStorage.getItem(`ltj_prevRptIds_${sym}`) || 'null');
+            if (ids?.length) _news.prevReportIds[sym] = new Set(ids);
+          } catch {}
+        }
       }
     } catch {}
   }));
@@ -673,15 +680,19 @@ function _renderAllSignalsPanel() {
   const syms = [...PINNED_SYMS, ...userSyms];
   const anyRunning = syms.some(s => _news.reportsRunning.has(s));
 
-  // Gather all signal articles from every report, sorted newest first
+  // For each ticker take up to 2 NEW articles (not in prevReportIds), then sort all by date
   const articles = [];
   for (const sym of syms) {
-    const report = _news.allReports[sym];
+    const report  = _news.allReports[sym];
     if (!report) continue;
-    for (const c of (report.clusters || [])) {
-      const rep = c.representative;
-      if (rep?.id) articles.push({ ...rep, symbol: sym });
-    }
+    const prevIds = _news.prevReportIds[sym]; // Set or undefined
+    const symNew  = (report.clusters || [])
+      .map(c => c.representative)
+      .filter(rep => rep?.id && (!prevIds?.size || !prevIds.has(rep.id)))
+      .sort((a, b) => (b.publishedAt || '') > (a.publishedAt || '') ? 1 : -1)
+      .slice(0, 2)
+      .map(rep => ({ ...rep, symbol: sym }));
+    articles.push(...symNew);
   }
   articles.sort((a, b) => (b.publishedAt || '') > (a.publishedAt || '') ? 1 : -1);
 
@@ -689,7 +700,7 @@ function _renderAllSignalsPanel() {
     el.innerHTML = `
       <div class="nrp-wrap nrp-empty">
         <div class="nrp-empty-icon">📡</div>
-        <div class="nrp-label">${anyRunning ? 'Analysing…' : 'No signal articles yet.'}</div>
+        <div class="nrp-label">${anyRunning ? 'Analysing…' : 'No new signals.'}</div>
         ${anyRunning ? `<div class="nrp-loading-row"><span class="nrp-spinner"></span></div>` : ''}
       </div>`;
     return;
@@ -718,8 +729,8 @@ function _renderAllSignalsPanel() {
     <div class="nrp-wrap">
       ${anyRunning ? `<div class="nrp-live-banner"><span class="nrp-spinner"></span> Analysing new articles…</div>` : ''}
       <div class="nrp-hdr-row">
-        <span class="nrp-title">All Signal Articles</span>
-        <button class="nrp-gen-btn" onclick="_loadAllReports()" title="Refresh all">↺</button>
+        <span class="nrp-title">New Signals</span>
+        <button class="nrp-gen-btn" onclick="_loadAllReports()" title="Refresh">↺</button>
       </div>
       <div class="nrp-stories">${rows}</div>
     </div>`;
