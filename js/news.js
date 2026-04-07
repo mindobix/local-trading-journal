@@ -133,7 +133,7 @@ const _news = {
   prices:           {},          // symbol → { price, change, changePct, updatedAt }
   prevReportIds:    {},          // symbol → Set of article IDs from the prior report (for NEW pill)
   prevReportGenAt:  {},          // symbol → generatedAt of the prior report
-  activeTab:        'signal',    // 'signal' | 'llm' | 'allsignals'
+  activeTab:        'allsignals', // 'signal' | 'llm' | 'allsignals'
   allReports:       {},          // sym → report cache for all-signals view
 };
 
@@ -680,23 +680,21 @@ function _renderAllSignalsPanel() {
   const syms = [...PINNED_SYMS, ...userSyms];
   const anyRunning = syms.some(s => _news.reportsRunning.has(s));
 
-  // For each ticker take up to 2 NEW articles (not in prevReportIds), then sort all by date
-  const articles = [];
+  // Build per-ticker groups (only tickers that have new articles)
+  const groups = [];
   for (const sym of syms) {
     const report  = _news.allReports[sym];
     if (!report) continue;
-    const prevIds = _news.prevReportIds[sym]; // Set or undefined
+    const prevIds = _news.prevReportIds[sym];
     const symNew  = (report.clusters || [])
       .map(c => c.representative)
       .filter(rep => rep?.id && (!prevIds?.size || !prevIds.has(rep.id)))
       .sort((a, b) => (b.publishedAt || '') > (a.publishedAt || '') ? 1 : -1)
-      .slice(0, 2)
-      .map(rep => ({ ...rep, symbol: sym }));
-    articles.push(...symNew);
+      .slice(0, 2);
+    if (symNew.length) groups.push({ sym, articles: symNew });
   }
-  articles.sort((a, b) => (b.publishedAt || '') > (a.publishedAt || '') ? 1 : -1);
 
-  if (!articles.length) {
+  if (!groups.length) {
     el.innerHTML = `
       <div class="nrp-wrap nrp-empty">
         <div class="nrp-empty-icon">📡</div>
@@ -706,23 +704,30 @@ function _renderAllSignalsPanel() {
     return;
   }
 
-  const rows = articles.map(a => {
-    const color     = _symColor(a.symbol);
-    const timeAgo   = a.publishedAt ? _timeAgo(a.publishedAt) : '';
-    const pillsHTML = (a.categoryMatches || (a.matchedCategory ? [{ category: a.matchedCategory }] : []))
-      .map(m => `<span class="nrp-cat-pill" style="${_catPillStyle(m.category)}">${_esc(m.category)}</span>`)
-      .join('');
+  const groupsHTML = groups.map(({ sym, articles }) => {
+    const color = _symColor(sym);
+    const storiesHTML = articles.map(a => {
+      const timeAgo   = a.publishedAt ? _timeAgo(a.publishedAt) : '';
+      const pillsHTML = (a.categoryMatches || (a.matchedCategory ? [{ category: a.matchedCategory }] : []))
+        .map(m => `<span class="nrp-cat-pill" style="${_catPillStyle(m.category)}">${_esc(m.category)}</span>`)
+        .join('');
+      return `
+        <div class="nrp-story" onclick="_openArticle('${_esc(a.id)}')">
+          <div class="nrp-story-meta">
+            ${pillsHTML}
+            ${timeAgo ? `<span class="nrp-story-time">${_esc(timeAgo)}</span>` : ''}
+            <span class="nrp-story-src">${_esc(a.source || '')}</span>
+          </div>
+          <div class="nrp-story-title">${_esc(a.title)}</div>
+          ${a.summary ? `<div class="nrp-story-summary">${_esc(a.summary)}</div>` : ''}
+        </div>`;
+    }).join('');
+
     return `
-      <div class="nrp-story" onclick="_openArticle('${_esc(a.id)}')">
-        <div class="nrp-story-meta">
-          <span class="nrp-sym-badge" style="background:${color};padding:1px 6px;font-size:10px">${_esc(a.symbol)}</span>
-          ${pillsHTML}
-          ${timeAgo ? `<span class="nrp-story-time">${_esc(timeAgo)}</span>` : ''}
-          <span class="nrp-story-src">${_esc(a.source || '')}</span>
-        </div>
-        <div class="nrp-story-title">${_esc(a.title)}</div>
-        ${a.summary ? `<div class="nrp-story-summary">${_esc(a.summary)}</div>` : ''}
-      </div>`;
+      <div class="allsig-ticker-hdr">
+        <span class="nrp-sym-badge" style="background:${color}">${_esc(sym)}</span>
+      </div>
+      ${storiesHTML}`;
   }).join('');
 
   el.innerHTML = `
@@ -732,7 +737,7 @@ function _renderAllSignalsPanel() {
         <span class="nrp-title">New Signals</span>
         <button class="nrp-gen-btn" onclick="_loadAllReports()" title="Refresh">↺</button>
       </div>
-      <div class="nrp-stories">${rows}</div>
+      <div class="nrp-stories">${groupsHTML}</div>
     </div>`;
 }
 

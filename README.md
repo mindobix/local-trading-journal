@@ -3,7 +3,7 @@
 
 **Stop paying $25–50/month for a trading journal.** Local Trading Journal is a full-featured, privacy-first trading journal that runs entirely in your browser — no subscription, no account, no data leaving your machine.
 
-Now includes a **Signal News** tab — a live market intelligence feed with AI-powered signal analysis, real-time stock prices, and RSS news aggregation running on a local background server — plus an **LLM Prompts** tab for saving, organizing, and launching AI market analysis prompts for ChatGPT, Grok, Gemini, Claude, or any other LLM.
+Now includes a **Signal News** tab — a live market intelligence feed with AI-powered signal analysis, real-time stock prices, and RSS news aggregation running on a local background server — plus a **New Signals** aggregated feed and an **LLM Prompts** tab for saving, organizing, and launching AI market analysis prompts for ChatGPT, Grok, Gemini, Claude, or any other LLM.
 
 ---
 
@@ -115,6 +115,16 @@ A multi-tab report suite with six primary report types and secondary sub-tabs wi
 
 A live market intelligence feed powered by a local Node.js background server. No external API keys required.
 
+The tab bar always shows three special tabs first, followed by individual ticker tabs:
+
+**📡 New Signals** *(default tab)* — aggregates the latest new signal articles across every configured ticker in one place. Articles not present in the previous report snapshot are considered new. Up to 2 new articles per ticker are shown, grouped by ticker in the same order as the tab bar, each with a signal category pill. Clicking an article opens the full article reader on the right.
+
+**🤖 LLM Prompts** — prompt library (see below).
+
+**Individual ticker tabs** (MARKET, SPX, SPY, QQQ, + user tickers) — per-symbol signal report with sentiment, price, stats, and story clusters.
+
+---
+
 **Live stock prices**
 - Displays current price, change, and % change per ticker at the top of each signal report
 - Fetched via Yahoo Finance v8 (no API key) and refreshed every 5 minutes with the crawl cycle
@@ -181,6 +191,7 @@ RSS crawling pauses automatically while signal workers are running (they're CPU-
 - **Quick-launch strip** — LLM buttons always visible at the top; one tap opens the LLM in a new browser tab
 - **Prompt categories** — color-coded by name (8-color palette), shown as pills in the list and form
 - **Rich text results panel** — paste LLM output directly into each prompt entry; formatting (bold, headings, lists) is preserved
+- **Results indicator** — a green dot appears next to any prompt that has saved results; the list date updates to show when results were last saved
 - **6 default prompts** seeded on first load (Trade Idea Generator, Technical Analyst, News-to-Trade, Strategy Backtester, Trade Plan, Sentiment); restore missing defaults any time with the **↺ Defaults** button
 
 ---

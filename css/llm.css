@@ -435,3 +435,7 @@
 }
 .llm-form-cancel:hover { background: var(--surface2); color: var(--text); }
 
+/* New Signals grouped layout */
+.allsig-divider { border: none; border-top: 1px solid var(--border); margin: 8px 0; }
+.allsig-ticker-hdr { padding: 10px 0 6px; }
+
