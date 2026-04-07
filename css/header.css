@@ -13,9 +13,9 @@
 }
 .logo {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 1px;
+  flex-direction: row;
+  align-items: baseline;
+  gap: 7px;
   white-space: nowrap;
 }
 .logo-name {
@@ -23,14 +23,12 @@
   font-weight: 800;
   color: var(--accent);
   letter-spacing: -0.5px;
-  line-height: 1;
 }
 .logo-version {
   font-size: 10px;
   font-weight: 500;
-  color: var(--text-dim);
+  color: var(--text-muted);
   letter-spacing: 0.04em;
-  line-height: 1;
 }
 .logo-sep   { color: var(--text-dim); font-weight: 400; }
 .logo-trade { color: var(--text); }
