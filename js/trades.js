@@ -33,9 +33,13 @@ function renderTrades() {
 
   const tbody = document.getElementById('trades-body');
   if (!trades.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="8">No trades found. Click a calendar day or use "+ Add Trade" to get started.</td></tr>`;
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="11">No trades found. Click a calendar day or use "+ Add Trade" to get started.</td></tr>`;
     return;
   }
+
+  const allMistakes = loadMistakes();
+  const allRules    = loadRules();
+  const allTags     = loadTags();
 
   tbody.innerHTML = trades.map(t => {
     const pnl    = getPnl(t);
@@ -60,6 +64,18 @@ function renderTrades() {
         : `<span class="badge b-short">Short</span>`;
     })();
 
+    const mistakePills = (t.mistakes || [])
+      .map(id => { const m = allMistakes.find(x => x.id === id); return m ? `<span class="trade-mistake-badge">${escHtml(m.text)}</span>` : null; })
+      .filter(Boolean).join(' ');
+
+    const rulePills = (t.rules || [])
+      .map(id => { const r = allRules.find(x => x.id === id); return r ? `<span class="trade-rule-badge">${escHtml(r.text)}</span>` : null; })
+      .filter(Boolean).join(' ');
+
+    const tagPills = (t.tags || [])
+      .map(id => { const tg = allTags.find(x => x.id === id); return tg ? `<span class="trade-tag-badge">${escHtml(tg.text)}</span>` : null; })
+      .filter(Boolean).join(' ');
+
     return `<tr>
       <td>${dateStr}</td>
       <td><strong>${t.symbol}</strong></td>
@@ -67,6 +83,9 @@ function renderTrades() {
       <td>${typeLbl}</td>
       <td>${legsSummary(t)}</td>
       <td class="${pnlCls}" style="font-weight:700">${pnlStr}</td>
+      <td style="white-space:normal">${mistakePills || '—'}</td>
+      <td style="white-space:normal">${rulePills || '—'}</td>
+      <td style="white-space:normal">${tagPills || '—'}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;color:var(--text-muted)">${t.notes || '—'}</td>
       <td>
         <div style="display:flex;gap:5px">

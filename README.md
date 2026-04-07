@@ -27,7 +27,11 @@ Your trade data is sensitive. Position sizes, entry timing, win rate, P&L — th
 ## What You Get
 
 ### Trade Logging with Multi-Leg Execution
-Record every buy and sell leg individually, exactly as your broker executes them. Partial fills, scaled exits, multi-day holds — all supported. FIFO P&L is calculated automatically across every leg.
+Record every buy and sell leg individually, exactly as your broker executes them. Partial fills, scaled exits, multi-day holds — all supported. FIFO P&L is calculated automatically across every leg using **FIFO (First-In, First-Out)** matching.
+
+- Tag each trade with **Trading Rules** (green), **Mistakes** (red), and **Custom Tags** (amber) — color-coded pills throughout the app
+- Options and stocks both supported; options use a 100× multiplier automatically
+- Commissions and fees tracked per leg and deducted from realized P&L
 
 ### Profit Targets & Stop Loss Planning
 Set multiple price targets and stop levels directly on each trade, with real-time preview as you type:
@@ -50,28 +54,44 @@ When multiple trades are listed, all columns align uniformly for clean, at-a-gla
 ### Inline Edit Without Losing Context
 Click the edit icon on any trade and the form opens directly below that trade — the trade summary stays visible so you always know what you're editing. Click the same icon again to toggle it closed. Switching to a different trade moves the form automatically.
 
-### Calendar & Daily/Weekly Views
-Click any day or week in the calendar to open a detailed breakdown:
-- Daily P&L, trade count, wins, losses
-- All trades for that day with full summary panels
-- Add new trades directly from the day view
+### Add Trade / Bulk Trades Entry
+**Add Trade** — the header "+ Add Trade" button opens the trade form in a modal for quick single-trade entry from anywhere in the app.
+
+**Bulk Trades Entry** — a spreadsheet-style grid for entering many legs at once:
+- Each row is one execution leg; rows sharing the same Trade ID are grouped into one trade
+- Inline dropdowns for type, action, option type, tags, mistakes, and rules — all editable per row
+- Duplicate the previous row with one click to speed up multi-leg entry
+- Unsaved changes trigger a browser leave-confirmation so you never lose work accidentally
+- Import trades in bulk from a CSV file (broker export or manual entry) — download the column template from the app header
+- Full JSON backup/restore — export everything (trades, tags, rules, plans, ideas, LLM prompts) and restore it to any browser
+
+### Calendar Tab
+The default landing view. Click any day to open a detailed daily breakdown or any week label to open a weekly summary.
+
+**Daily view** — shows day P&L, trade count, wins and losses, all trades for that day with full summary panels, and an inline form to add new trades directly.
+
+**Weekly view** — aggregates P&L, trade count, wins, and losses across the full week with per-day grouping.
+
+### Trades Tab
+A sortable, filterable table of every trade across all dates with columns: Date, Symbol, Side, Type, Legs, Net P&L, plus three pill columns before Notes:
+
+- **Mistakes** — red pills for each mistake tagged on the trade
+- **Rules** — green pills for each trading rule followed
+- **Tags** — amber pills for each custom tag
+
+Empty cells show a dash. Click any column header to sort ascending/descending. Filter any view by date range, symbol, tags, mistakes, rules, trade type, and more — include/exclude modes let you drill into exactly the subset you want.
 
 ### Trade Plan Tab
-A full three-view (Monthly / Weekly / Daily) option trade plan tracker:
+A three-view (Monthly / Weekly / Daily) option trade plan tracker:
 - Plan option trades with strike, trigger, up to 3 targets, and a stop level
 - Track status: Active → Triggered → Target Hit / Stopped
 - Color-code cards with 24 presets or a custom color picker
-- Write daily journal entries with inline rich-text editor (auto-saved)
+- Write daily journal entries with an inline rich-text editor (auto-saved)
 
-**Weekly Prep summary** — when trade cards are entered on the previous Saturday or Sunday with the "Week Of" set to a future week, those cards automatically surface as a pinned **Weekly Prep** section at the top of that week's Daily view:
-- Cards are shown full-size with a partial peek (height-clipped with a gradient fade) hinting there are more — click **Show all** to expand
-- Amber styling distinguishes prep cards from cards entered during the live trading week
-- A **Weekly Plan** toggle at the top reveals rich-text plan editors for each prep date (Saturday and/or Sunday), reading and saving directly to those dates — the same plan shown if you navigate to that Saturday or Sunday in the Daily view
-- If no weekend prep cards exist for a week, the section is hidden entirely
+**Weekly Prep summary** — trade plan cards entered on the previous Saturday or Sunday (with "Week Of" set to a future week) automatically surface as a pinned **Weekly Prep** section at the top of that week's Daily view. Cards are height-clipped with a gradient fade — click **Show all** to expand. A **Weekly Plan** toggle reveals rich-text plan editors for each prep date.
 
-### Performance Reports
-
-A multi-tab report suite with a primary tab bar (Day & Time, Risk, Ticker Symbols, Tags, Options: DTE, Performance) and secondary sub-tabs within each. Every report type includes a **Cross Analysis** section — a dynamic table that cross-references any row group against configurable columns (Top 10 / Bottom 10 symbols, Trade Type, Tags, Mistakes, Trading Rules, Day of Week, Trade Duration, Week, Year, Position Size, Volume) with Win Rate / P&L / Trades toggle.
+### Reports Tab
+A multi-tab report suite with six primary report types and secondary sub-tabs within each. Every report includes a **Cross Analysis** section — a dynamic table that cross-references any row group against configurable columns (Top 10 / Bottom 10 symbols, Trade Type, Tags, Mistakes, Trading Rules, Day of Week, Trade Duration, Week, Year, Position Size, Volume) with Win Rate / P&L / Trades toggle.
 
 **Day & Time** — four sub-tabs: Days, Months, Trade Time, Trade Duration. Each shows highlight cards, a summary table, and cross analysis.
 
@@ -84,60 +104,12 @@ A multi-tab report suite with a primary tab bar (Day & Time, Risk, Ticker Symbol
 
 **Tags** — three sub-tabs (Custom Tags, Mistakes, Trading Rules). Each shows top 4 highlight cards, a summary table, and cross analysis scoped to that tag set.
 
-**Options: DTE** — Days Till Expiration analysis for option trades only. Buckets trades from "Same day" through "10+ days", with highlight cards, a summary table, and cross analysis.
+**Options: DTE** — Days Till Expiration analysis for option trades only. Buckets from "Same day" through "10+ days", with highlight cards, summary table, and cross analysis.
 
 **Performance** — three sub-tabs with a clean 4-column stats grid (no tables or charts — pure key metrics):
-- *Summary* — 16 metrics across 4 rows: Net P&L, Trade Expectancy, Avg Net Trade P&L, Avg Daily Volume, Win %, Avg Daily Win/Loss, Avg Daily Net P&L, Logged Days, Avg Daily Win % (wins/ties/losses), Avg Trade Win/Loss, Avg. Planned R-Multiple, Max Daily Net Drawdown, Profit Factor, Avg Hold Time, Avg. Realized R-Multiple, Avg Daily Net Drawdown
+- *Summary* — 16 metrics: Net P&L, Trade Expectancy, Avg Net Trade P&L, Avg Daily Volume, Win %, Avg Daily Win/Loss, Avg Daily Net P&L, Logged Days, Avg Daily Win %, Avg Trade Win/Loss, Avg Planned R-Multiple, Max Daily Net Drawdown, Profit Factor, Avg Hold Time, Avg Realized R-Multiple, Avg Daily Net Drawdown
 - *Days* — day-level metrics: Avg Daily Win %, Avg Daily Win/Loss, Largest Profitable Day, Avg Daily Net P&L, Largest Losing Day, Avg Trading Day Duration
-- *Trades* — trade-level metrics: Win %, Avg Trade Win/Loss, Largest Profitable Trade, Longest Trade Duration, Longs Win %, Trade Expectancy, Largest Losing Trade, Shorts Win %, Avg Net Trade P&L, Avg Trading Day Duration
-
-### Smart Filtering
-Filter any view by date range, symbol, tags, mistakes, rules, trade type, and more. Include/exclude modes let you drill into exactly the subset of trades you want to analyze.
-
-### Tags, Mistakes & Trading Rules
-- Create a personal checklist of trading rules and tag each trade with which rules you followed (or broke)
-- Log specific mistakes to track recurring behavioral patterns
-- Add custom tags for setups, market conditions, or anything else
-
-### CSV Import & JSON Backup
-- Import trades in bulk from a CSV file (broker export or manual entry)
-- Full JSON backup/restore — export everything (trades, tags, rules, plans, ideas, LLM prompts) and restore it to any browser
-
----
-
-### LLM Prompts Tab
-
-A prompt library for AI-powered market analysis. Save, organize, and launch prompts for any LLM — Grok, ChatGPT, Gemini, Claude, or any other tool.
-
-**Quick-launch strip** — Grok, ChatGPT, Gemini, and Claude buttons are always visible at the top of the tab. One tap opens the LLM in a new browser tab.
-
-**Prompt list** — left panel shows all saved prompts with LLM badge (color-coded), category pill, and full prompt text.
-
-**Prompt categories** — each prompt has a Prompt Category field. Categories are color-coded consistently across the list, view, and form (8-color palette, deterministic by category name). New categories can be added inline while saving a prompt, or via the **+ Save** button in the form. Existing categories appear as colored pills — click one to use it, click ✕ to delete it.
-
-**Prompt view** — tap any prompt to see:
-- Full prompt text with a **Copy prompt** button
-- Category badge and LLM badge
-- Rich text results panel — paste output directly from the LLM, formatting preserved (bold, headings, bullet lists, etc.)
-- Edit / Delete actions
-
-**Rich text editor** — contenteditable editor with a formatting toolbar (Bold, Italic, Underline, bullet/numbered lists, Heading, Paragraph). Paste from any LLM and the formatting comes through intact.
-
-**6 default prompts** — seeded automatically on first load, all using Grok:
-| Category | Purpose |
-|---|---|
-| Trade Idea Generator | 5 high-probability setups with entry, targets, stop, R:R |
-| Automated Technical Analyst | Support/resistance, MAs, momentum — Buy/Hold/Sell signal |
-| News-to-Trade Converter | Translate latest news into price movement and positioning |
-| Strategy Backtester | Win rate, profit factor, max drawdown for any strategy |
-| Fully Automated Trade Plan | Pre-market to close checklist for any market/asset |
-| Stock Move & X.com Sentiment | Price move + X.com sentiment summary for a watchlist |
-
-**↺ Defaults button** — restores any missing default prompts without touching existing ones. Useful after deleting a default or loading the app fresh.
-
-**Storage** — prompts and categories are saved to `localStorage` and included in the JSON backup/restore.
-
----
+- *Trades* — trade-level metrics: Win %, Avg Trade Win/Loss, Largest Profitable Trade, Longest Trade Duration, Longs Win %, Trade Expectancy, Largest Losing Trade, Shorts Win %, Avg Net Trade P&L
 
 ### Signal News Tab
 
@@ -204,6 +176,12 @@ RSS crawling pauses automatically while signal workers are running (they're CPU-
 - One shared RSS feed template for all ticker symbols
 - Separate feed management for MARKET
 - **Clear Cache** button wipes all cached data: articles, embeddings, summaries, scores, and reports — triggers a fresh crawl automatically
+
+**LLM Prompts Tab** — a prompt library for AI-powered market analysis. Save, organize, and launch prompts for any LLM — Grok, ChatGPT, Gemini, Claude, or any other tool.
+- **Quick-launch strip** — LLM buttons always visible at the top; one tap opens the LLM in a new browser tab
+- **Prompt categories** — color-coded by name (8-color palette), shown as pills in the list and form
+- **Rich text results panel** — paste LLM output directly into each prompt entry; formatting (bold, headings, lists) is preserved
+- **6 default prompts** seeded on first load (Trade Idea Generator, Technical Analyst, News-to-Trade, Strategy Backtester, Trade Plan, Sentiment); restore missing defaults any time with the **↺ Defaults** button
 
 ---
 
