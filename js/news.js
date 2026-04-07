@@ -133,7 +133,9 @@ const _news = {
   prices:           {},          // symbol → { price, change, changePct, updatedAt }
   prevReportIds:    {},          // symbol → Set of article IDs from the prior report (for NEW pill)
   prevReportGenAt:  {},          // symbol → generatedAt of the prior report
-  activeTab:        'signal',    // 'signal' | 'llm'
+  activeTab:        'signal',    // 'signal' | 'llm' | 'allsignals'
+  allReports:       {},          // sym → report cache for all-signals view
+  allReportsSelected: null,      // currently selected sym in all-signals right panel
 };
 
 // ─── LLM Prompts state ────────────────────────────────────────────────────────
@@ -306,6 +308,17 @@ async function _checkReportStatuses() {
         _news.reportsAvailable.add(sym);
         // Auto-reload report + signal pills if this is the active tab and it just finished
         if ((wasRunning || !hadReport) && sym === _news.activeSymbol) activeNeedsReload = true;
+        // Refresh all-signals cache when a report completes
+        if ((wasRunning || !hadReport) && _news.activeTab === 'allsignals') {
+          fetch(`${NEWS_API}/news/report/${encodeURIComponent(sym)}`)
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+              if (!data) return;
+              _news.allReports[sym] = data;
+              _renderAllSigLeft();
+              if (_news.allReportsSelected === sym) _renderAllSigRight(sym);
+            }).catch(() => {});
+        }
 
       } else if (status === 'error') {
         _news.reportsRunning.delete(sym);
@@ -514,6 +527,7 @@ function renderNewsShell() {
 
   // Render the initial body based on which tab was last active
   if (_news.activeTab === 'llm') _showLlmBody();
+  else if (_news.activeTab === 'allsignals') { _showAllSignalsBody(); _loadAllReports(); }
   else _showSignalBody();
 }
 
@@ -524,29 +538,40 @@ function _renderSymbolTabs() {
   const userSyms = (_news.config?.symbols || []).filter(s => !PINNED_SYMS.includes(s));
   const syms = [...PINNED_SYMS, ...userSyms];
 
-  // LLM News tab — always first, special styling
-  const llmActive = _news.activeTab === 'llm';
+  const llmActive    = _news.activeTab === 'llm';
+  const allsigActive = _news.activeTab === 'allsignals';
+
   const llmTab = `<button class="news-sym-tab news-sym-tab-llm${llmActive ? ' active' : ''}"
     onclick="_switchToLlmTab()">🤖 LLM Prompts</button>`;
 
+  const allsigTab = `<button class="news-sym-tab news-sym-tab-allsig${allsigActive ? ' active' : ''}"
+    onclick="_switchToAllSignalsTab()">📡 All Signals</button>`;
+
   const signalTabs = syms.map(s => {
-    if (llmActive) return `<button class="news-sym-tab" onclick="_switchNewsSymbol('${_esc(s)}')">${_esc(s)}</button>`;
     const isRunning = _news.reportsRunning.has(s);
     const hasReport = _news.reportsAvailable.has(s);
     const dot = isRunning ? '<span class="nst-dot nst-dot-running"></span>'
               : hasReport ? '<span class="nst-dot"></span>'
               : '';
-    return `<button class="news-sym-tab${s === _news.activeSymbol && !llmActive ? ' active' : ''}"
+    const isActive = s === _news.activeSymbol && _news.activeTab === 'signal';
+    return `<button class="news-sym-tab${isActive ? ' active' : ''}"
              onclick="_switchNewsSymbol('${_esc(s)}')">${dot}${_esc(s)}</button>`;
   }).join('');
 
-  el.innerHTML = llmTab + signalTabs;
+  el.innerHTML = llmTab + allsigTab + signalTabs;
 }
 
 function _switchToLlmTab() {
   _news.activeTab = 'llm';
   _renderSymbolTabs();
   _showLlmBody();
+}
+
+function _switchToAllSignalsTab() {
+  _news.activeTab = 'allsignals';
+  _renderSymbolTabs();
+  _showAllSignalsBody();
+  _loadAllReports();
 }
 
 function _switchNewsSymbol(sym) {
@@ -596,6 +621,193 @@ function _showSignalBody() {
       </div>
     </div>`;
   _renderReportPanel();
+}
+
+// ─── ALL SIGNALS TAB ──────────────────────────────────────────────────────────
+function _showAllSignalsBody() {
+  const body = document.getElementById('news-body');
+  if (!body) return;
+  body.innerHTML = `
+    <div class="allsig-wrap">
+      <div class="allsig-left" id="allsig-left"></div>
+      <div class="allsig-right" id="allsig-right"></div>
+    </div>`;
+  _renderAllSigLeft();
+  _renderAllSigRight(_news.allReportsSelected);
+}
+
+async function _loadAllReports() {
+  const userSyms = (_news.config?.symbols || []).filter(s => !PINNED_SYMS.includes(s));
+  const syms = [...PINNED_SYMS, ...userSyms];
+  await Promise.all(syms.map(async sym => {
+    try {
+      const r = await fetch(`${NEWS_API}/news/report/${encodeURIComponent(sym)}`);
+      if (r.ok) {
+        _news.allReports[sym] = await r.json();
+        _news.reportsAvailable.add(sym);
+      }
+    } catch {}
+  }));
+  if (_news.activeTab === 'allsignals') {
+    _renderAllSigLeft();
+    if (_news.allReportsSelected) _renderAllSigRight(_news.allReportsSelected);
+  }
+}
+
+function _renderAllSigLeft() {
+  const el = document.getElementById('allsig-left');
+  if (!el) return;
+  const userSyms = (_news.config?.symbols || []).filter(s => !PINNED_SYMS.includes(s));
+  const syms = [...PINNED_SYMS, ...userSyms];
+
+  const rows = syms.map(sym => {
+    const report    = _news.allReports[sym];
+    const isRunning = _news.reportsRunning.has(sym);
+    const selected  = _news.allReportsSelected === sym;
+    const color     = _symColor(sym);
+
+    const sentClass = { bullish: 'asig-bull', bearish: 'asig-bear', mixed: 'asig-mix', neutral: 'asig-neu' }[report?.sentiment] || 'asig-neu';
+    const sentIcon  = { bullish: '▲', bearish: '▼', mixed: '◆', neutral: '─' }[report?.sentiment] || '─';
+
+    const priceData  = _news.prices[sym];
+    const priceStr   = priceData ? `$${priceData.price.toFixed(2)}` : '';
+    const chgStr     = priceData ? (priceData.change >= 0 ? `+${priceData.change.toFixed(2)}` : `${priceData.change.toFixed(2)}`) : '';
+    const priceClass = priceData ? (priceData.change >= 0 ? 'asig-price-up' : 'asig-price-down') : '';
+
+    const age         = report?.generatedAt ? _timeAgo(report.generatedAt) : '';
+    const signalCount = report?.signalCount ?? null;
+    const topStory    = report?.clusters?.[0]?.representative?.title || '';
+
+    const statusDot = isRunning
+      ? `<span class="asig-dot asig-dot-running" title="Analysing…"></span>`
+      : report ? `<span class="asig-dot asig-dot-done" title="Report ready"></span>` : '';
+
+    return `
+      <div class="asig-row${selected ? ' active' : ''}" onclick="_allSigSelect('${_esc(sym)}')">
+        <div class="asig-row-top">
+          <span class="asig-sym-badge" style="background:${color}">${_esc(sym)}</span>
+          ${report ? `<span class="asig-sent ${sentClass}">${sentIcon}</span>` : ''}
+          ${priceStr ? `<span class="asig-price ${priceClass}">${_esc(priceStr)}<span class="asig-chg">${_esc(chgStr)}</span></span>` : ''}
+          ${signalCount !== null ? `<span class="asig-sig-count">${signalCount} sig</span>` : ''}
+          ${statusDot}
+          ${age ? `<span class="asig-age">${_esc(age)}</span>` : ''}
+        </div>
+        <div class="asig-top-story ${!topStory ? (isRunning ? 'asig-muted' : 'asig-muted') : ''}">
+          ${topStory ? _esc(topStory) : (isRunning ? 'Analysing…' : 'No report yet')}
+        </div>
+      </div>`;
+  }).join('');
+
+  el.innerHTML = `
+    <div class="asig-left-hdr">
+      <span class="asig-left-title">All Signal Reports</span>
+      <button class="asig-refresh-btn" onclick="_loadAllReports()" title="Refresh all">↺ Refresh</button>
+    </div>
+    <div class="asig-left-body">
+      ${rows || '<div class="asig-empty">No symbols configured.</div>'}
+    </div>`;
+}
+
+function _renderAllSigRight(sym) {
+  const el = document.getElementById('allsig-right');
+  if (!el) return;
+
+  if (!sym) {
+    el.innerHTML = `
+      <div class="asig-placeholder">
+        <span style="font-size:32px">📡</span>
+        <div>Select a ticker to view its signal report.</div>
+      </div>`;
+    return;
+  }
+
+  const report    = _news.allReports[sym];
+  const isRunning = _news.reportsRunning.has(sym);
+
+  if (!report) {
+    el.innerHTML = `
+      <div class="nrp-wrap nrp-empty">
+        <div class="nrp-empty-icon">📊</div>
+        <span class="nrp-sym-badge" style="background:${_symColor(sym)};display:inline-block;margin-bottom:8px">${_esc(sym)}</span>
+        <div class="nrp-label">Waiting for report…</div>
+        ${isRunning ? `<div class="nrp-loading-row"><span class="nrp-spinner"></span> Analysing…</div>` : ''}
+      </div>`;
+    return;
+  }
+
+  const sentimentClass = { bullish: 'nrp-bull', bearish: 'nrp-bear', mixed: 'nrp-mix', neutral: 'nrp-neu' }[report.sentiment] || 'nrp-neu';
+  const sentimentIcon  = { bullish: '▲', bearish: '▼', mixed: '◆', neutral: '─' }[report.sentiment] || '─';
+  const age = _timeAgo(report.generatedAt);
+
+  const priceData = _news.prices[sym];
+  const priceHTML = priceData ? (() => {
+    const p   = priceData.price.toFixed(2);
+    const chg = priceData.change >= 0 ? `+${priceData.change.toFixed(2)}` : priceData.change.toFixed(2);
+    const pct = priceData.changePct >= 0 ? `+${priceData.changePct.toFixed(2)}%` : `${priceData.changePct.toFixed(2)}%`;
+    const cls = priceData.change >= 0 ? 'nrp-price-up' : 'nrp-price-down';
+    return `<div class="nrp-price-row">
+      <span class="nrp-price-val">$${_esc(p)}</span>
+      <span class="nrp-price-chg ${cls}">${_esc(chg)} (${_esc(pct)})</span>
+    </div>`;
+  })() : '';
+
+  const storiesHTML = (report.clusters || [])
+    .slice()
+    .sort((a, b) => {
+      const ta = a.representative?.publishedAt || '';
+      const tb = b.representative?.publishedAt || '';
+      return tb > ta ? 1 : tb < ta ? -1 : 0;
+    })
+    .slice(0, 5)
+    .map(c => {
+      const rep       = c.representative;
+      const dupeLabel = c.duplicates?.length ? `<span class="nrp-dupes">+${c.duplicates.length} similar</span>` : '';
+      const score     = rep.score ? `<span class="nrp-score">${Math.round(rep.score * 100)}%</span>` : '';
+      const pillsHTML = (rep.categoryMatches || (rep.matchedCategory ? [{ category: rep.matchedCategory }] : []))
+        .map(m => `<span class="nrp-cat-pill" style="${_catPillStyle(m.category)}" title="${_esc(m.signal || '')}">${_esc(m.category)}</span>`)
+        .join('');
+      const timeAgo = rep.publishedAt ? _timeAgo(rep.publishedAt) : '';
+      return `
+        <div class="nrp-story" onclick="_openArticle('${_esc(rep.id)}')">
+          <div class="nrp-story-meta">
+            ${score}${dupeLabel}
+            ${timeAgo ? `<span class="nrp-story-time">${_esc(timeAgo)}</span>` : ''}
+            <span class="nrp-story-src">${_esc(rep.source)}</span>
+          </div>
+          <div class="nrp-story-title">${_esc(rep.title)}</div>
+          ${pillsHTML ? `<div class="nrp-cat-pills">${pillsHTML}</div>` : ''}
+          ${rep.summary ? `<div class="nrp-story-summary">${_esc(rep.summary)}</div>` : ''}
+        </div>`;
+    }).join('');
+
+  el.innerHTML = `
+    <div class="nrp-wrap">
+      ${isRunning ? `<div class="nrp-live-banner"><span class="nrp-spinner"></span> Analysing new articles…</div>` : ''}
+      <div class="nrp-hdr-row">
+        <span class="nrp-sym-badge" style="background:${_symColor(sym)}">${_esc(sym)}</span>
+        <span class="nrp-title">Signal Report</span>
+        <span class="nrp-age">${_esc(age)}</span>
+      </div>
+      ${priceHTML}
+      <div class="nrp-sentiment-block ${sentimentClass}">
+        <span class="nrp-sent-icon">${sentimentIcon}</span>
+        <span class="nrp-sent-label">${report.sentiment}</span>
+      </div>
+      <div class="nrp-stats-row">
+        <div class="nrp-stat"><span class="nrp-stat-val">${report.signalCount ?? 0}</span><span class="nrp-stat-lbl">signal</span></div>
+        <div class="nrp-stat"><span class="nrp-stat-val">${report.noiseCount ?? 0}</span><span class="nrp-stat-lbl">noise</span></div>
+        <div class="nrp-stat"><span class="nrp-stat-val">${report.clusters?.length ?? 0}</span><span class="nrp-stat-lbl">stories</span></div>
+      </div>
+      <div class="nrp-stories">
+        ${storiesHTML || '<div class="nrp-no-stories">No high-signal articles in this window.</div>'}
+      </div>
+    </div>`;
+}
+
+function _allSigSelect(sym) {
+  _news.allReportsSelected = sym;
+  _renderAllSigLeft();
+  _renderAllSigRight(sym);
 }
 
 
