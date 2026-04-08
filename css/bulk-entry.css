@@ -227,7 +227,7 @@
 /* hide spinner arrows on number inputs */
 .bulk-input[type=number]::-webkit-inner-spin-button,
 .bulk-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
-.bulk-input[type=number] { -moz-appearance: textfield; }
+.bulk-input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 
 /* ─── SELECTS ─── */
 .bulk-select {

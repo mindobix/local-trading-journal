@@ -68,6 +68,9 @@
   transition: border-color 0.15s;
 }
 .ts-input:focus { outline: none; border-color: var(--accent); }
+.ts-input[type=number]::-webkit-inner-spin-button,
+.ts-input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+.ts-input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .ts-input.ts-qty { width: 56px; flex: none; text-align: center; }
 .ts-del-btn {
   background: none;

@@ -335,6 +335,9 @@ tbody tr:hover td { background: var(--surface2); }
   transition: border-color 0.15s;
 }
 .leg-field:focus { border-color: var(--accent); }
+.leg-field[type=number]::-webkit-inner-spin-button,
+.leg-field[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
+.leg-field[type=number] { -moz-appearance: textfield; appearance: textfield; }
 .leg-action-sel.buy  { color: var(--green); border-color: rgba(16,185,129,0.35); }
 .leg-action-sel.sell { color: var(--red);   border-color: rgba(239,68,68,0.35); }
 .leg-del-btn {

@@ -472,6 +472,13 @@ document.getElementById('import-error-overlay').addEventListener('click', functi
   if (e.target === this) closeImportErrors();
 });
 
+// Prevent mouse wheel from changing number input values
+document.addEventListener('wheel', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type === 'number') {
+    e.target.blur();
+  }
+}, { passive: false });
+
 // Escape key closes modal / bulk view
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
