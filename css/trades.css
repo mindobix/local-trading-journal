@@ -37,6 +37,26 @@
 .toolbar select { min-width: 130px; }
 .toolbar select option { background: var(--surface2); }
 
+.trades-toolbar {
+  display: flex;
+  align-items: center;
+  padding: 8px 0 6px;
+}
+.trades-bulk-btn {
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.trades-bulk-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+
 .table-wrap { overflow-x: auto; border-radius: var(--radius-lg); border: 1px solid var(--border); }
 table {
   width: 100%;
