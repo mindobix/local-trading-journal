@@ -1,5 +1,8 @@
 const state = { view: 'calendar', tradesVisited: false };
 
+const APP_VERSION = '1.0.4';
+
+
 function toggleUtilDropdown(e) {
   e.stopPropagation();
   const menu = document.getElementById('util-dropdown-menu');
