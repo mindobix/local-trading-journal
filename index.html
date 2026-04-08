@@ -261,12 +261,26 @@
       <span class="bulk-count-label" id="bulk-count-label"></span>
     </div>
     <div class="bulk-topbar-actions">
+      <button class="bulk-act-btn bulk-paste-toggle-btn" id="bulk-paste-toggle-btn" onclick="toggleBulkPastePanel()" title="Paste &amp; Transform trades from copied broker data">&#128203; Paste &amp; Transform</button>
+      <div class="bulk-tb-divider"></div>
       <button class="bulk-act-btn" onclick="addBulkRow(1)">+ Add a Row</button>
       <button class="bulk-act-btn" onclick="addBulkRow(2)">+ Add 2 Rows</button>
       <button class="bulk-act-btn bulk-new-trade-btn" onclick="addNewBulkTrade()">+ New Trade</button>
       <div class="bulk-tb-divider"></div>
       <button class="bulk-save-btn" onclick="saveBulkTrades()">&#10003; Save Trades</button>
       <button class="bulk-close-btn" onclick="closeBulkView()" title="Close">&#10005;</button>
+    </div>
+  </div>
+  <!-- ─── PASTE & TRANSFORM PANEL ─── -->
+  <div class="bulk-paste-panel" id="bulk-paste-panel" style="display:none">
+    <div class="bulk-paste-inner">
+      <div class="bulk-paste-label">Paste broker export data below (tab-separated)</div>
+      <textarea id="bulk-paste-ta" class="bulk-paste-ta" placeholder="Paste copied rows here — header row is auto-detected and skipped&#10;&#10;Example:&#10;06-04-2025 09:32:13&#9;META 06-06-2025 670 CALL&#9;6&#9;$8.88&#9;$0.18&#9;$3.9"></textarea>
+      <div class="bulk-paste-actions">
+        <button class="bulk-paste-btn" onclick="transformPastedTrades()">&#10227; Transform</button>
+        <button class="bulk-paste-clear-btn" onclick="document.getElementById('bulk-paste-ta').value=''">Clear</button>
+        <span class="bulk-paste-hint">Rows are <strong>appended</strong> to the grid below</span>
+      </div>
     </div>
   </div>
   <div class="bulk-msg-panel" id="bulk-msg-panel" style="display:none"></div>

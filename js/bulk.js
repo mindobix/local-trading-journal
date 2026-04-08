@@ -9,6 +9,9 @@ function openBulkTradesView() {
   state.prevView = state.view;
   initBulkRows();
   document.getElementById('view-bulk').style.display = 'flex';
+  // Always open the paste panel when entering bulk view
+  document.getElementById('bulk-paste-panel').style.display = 'block';
+  document.getElementById('bulk-paste-toggle-btn').classList.add('active');
   window.addEventListener('beforeunload', _bulkBeforeUnload);
 }
 
@@ -464,4 +467,187 @@ function _afterBulkSave(minDate, maxDate) {
   // stale visibility or pick up an intermediate snapshot
   renderActiveFilters();
   renderTrades();
+}
+
+// ─── PASTE & TRANSFORM ───
+
+function toggleBulkPastePanel() {
+  const panel = document.getElementById('bulk-paste-panel');
+  const btn   = document.getElementById('bulk-paste-toggle-btn');
+  const open  = panel.style.display === 'none';
+  panel.style.display = open ? 'block' : 'none';
+  btn.classList.toggle('active', open);
+}
+
+function _parsePastedInstrument(raw) {
+  // e.g. "META 06-06-2025 670 CALL" or "META 06-06-2025 670.5 PUT"
+  const m = raw.trim().match(/^(\S+)\s+(\d{2}-\d{2}-\d{4})\s+([\d.]+)\s+(CALL|PUT)$/i);
+  if (m) {
+    const [, ticker, expRaw, strike, optType] = m;
+    // expRaw = MM-DD-YYYY → YYYY-MM-DD
+    const [mm, dd, yyyy] = expRaw.split('-');
+    return {
+      symbol:      ticker.toUpperCase(),
+      type:        'option',
+      optionType:  optType.toLowerCase(),
+      strikePrice: strike,
+      expiryDate:  `${yyyy}-${mm}-${dd}`,
+    };
+  }
+  // Plain stock / future — just a ticker symbol
+  if (/^\S+$/.test(raw.trim())) {
+    return { symbol: raw.trim().toUpperCase(), type: 'stock', optionType: '', strikePrice: '', expiryDate: '' };
+  }
+  return null;
+}
+
+function _parseMoney(val) {
+  if (!val || val === '--') return '';
+  return String(val).replace(/[$,\s]/g, '');
+}
+
+function _parseDatetime(raw) {
+  // "06-04-2025 09:32:13" → "2025-06-04T09:33" (round up minute when seconds > 0)
+  const m = raw.trim().match(/^(\d{2})-(\d{2})-(\d{4})\s+(\d{2}):(\d{2}):(\d{2})$/);
+  if (m) {
+    const d = new Date(`${m[3]}-${m[1]}-${m[2]}T${m[4]}:${m[5]}:${m[6]}`);
+    if (parseInt(m[6]) > 0) d.setMinutes(d.getMinutes() + 1);
+    const hh = String(d.getHours()).padStart(2, '0');
+    const mm = String(d.getMinutes()).padStart(2, '0');
+    const yyyy = d.getFullYear();
+    const mo   = String(d.getMonth() + 1).padStart(2, '0');
+    const dd   = String(d.getDate()).padStart(2, '0');
+    return `${yyyy}-${mo}-${dd}T${hh}:${mm}`;
+  }
+  // already ISO-ish — strip seconds if present, pass through trimmed
+  return raw.trim().replace(' ', 'T').replace(/T(\d{2}:\d{2}):\d{2}$/, 'T$1');
+}
+
+function transformPastedTrades() {
+  const ta   = document.getElementById('bulk-paste-ta');
+  const raw  = ta.value.trim();
+  if (!raw) return;
+
+  const lines = raw.split(/\r?\n/).filter(l => l.trim());
+  const warn  = [];
+  let added   = 0;
+
+  // Detect and skip header row
+  const firstCells = lines[0].split('\t').map(c => c.trim().toLowerCase());
+  const isHeader   = firstCells.some(c => c.startsWith('date') || c === 'instrument' || c === 'quantity');
+  const dataLines  = isHeader ? lines.slice(1) : lines;
+
+  // Determine next trade group number from existing rows
+  let maxNum = 0;
+  for (const r of bulkRows) {
+    const m = r.tradeId.match(/^T(\d+)$/i);
+    if (m) maxNum = Math.max(maxNum, parseInt(m[1]));
+  }
+  // If current rows are all empty defaults keep same group counter
+  const hasRealData = _bulkHasData();
+
+  // Map instrument key → tradeId for grouping legs of the same trade
+  const instrTradeMap = {};
+
+  for (const line of dataLines) {
+    const cols = line.split('\t').map(c => c.trim());
+    if (cols.length < 3) continue;
+
+    // Column layout from sample:
+    // 0: Date/Time  1: (empty)  2: (empty)  3: (empty)  4: Instrument  5: Quantity  6: Price  7: Fee  8: Commission
+    // Strategy: col 0 = datetime, scan forward to find instrument col
+
+    let dtRaw = cols[0];
+    if (!dtRaw || !dtRaw.match(/\d{2}[-/]\d{2}[-/]\d{4}/)) continue;
+
+    // Find the instrument column — first col that matches our option/stock pattern
+    let instrIdx = -1;
+    for (let i = 1; i < cols.length; i++) {
+      const c = cols[i];
+      if (/^[A-Z]{1,6}\s+\d{2}-\d{2}-\d{4}/i.test(c) || /^[A-Z]{1,6}$/.test(c)) {
+        instrIdx = i;
+        break;
+      }
+    }
+    if (instrIdx === -1) {
+      warn.push(`Skipped: could not identify instrument in — "${line.slice(0,60)}"`);
+      continue;
+    }
+
+    const instr = _parsePastedInstrument(cols[instrIdx]);
+    if (!instr) {
+      warn.push(`Skipped: unrecognised instrument "${cols[instrIdx]}"`);
+      continue;
+    }
+
+    // qty, price, fee, commission follow the instrument column
+    const qtyRaw   = cols[instrIdx + 1] ?? '';
+    const priceRaw = cols[instrIdx + 2] ?? '';
+    const feeRaw   = cols[instrIdx + 3] ?? '';
+    const commRaw  = cols[instrIdx + 4] ?? '';
+
+    const qtyNum  = parseFloat(qtyRaw.replace(/[$,]/g, ''));
+    const action  = qtyNum < 0 ? 'sell' : 'buy';
+    const qty     = Math.abs(qtyNum);
+    const price   = _parseMoney(priceRaw);
+    const fees    = _parseMoney(feeRaw);
+    const comm    = _parseMoney(commRaw);
+    const dt      = _parseDatetime(dtRaw);
+
+    // Group legs of the same instrument into one trade
+    const instrKey = `${instr.symbol}|${instr.optionType}|${instr.strikePrice}|${instr.expiryDate}`;
+    if (!instrTradeMap[instrKey]) {
+      maxNum++;
+      instrTradeMap[instrKey] = 'T' + maxNum;
+    }
+    const tradeId = instrTradeMap[instrKey];
+
+    // Reuse last row if it's an empty default placeholder
+    const lastRow = bulkRows[bulkRows.length - 1];
+    const reuseEmpty = !hasRealData && added === 0 &&
+      !lastRow.symbol && lastRow.price === '' && lastRow.quantity === '';
+
+    const newRow = _newBulkRow(tradeId, {
+      ...instr,
+      action,
+      datetime:   dt,
+      quantity:   isNaN(qty) ? '' : String(qty),
+      price:      '',
+      commission: comm || '0',
+      fees:       fees || '0',
+      tags: [], mistakes: [], rules: [],
+    });
+    newRow.price = price || '';
+
+    if (reuseEmpty) {
+      bulkRows[bulkRows.length - 1] = newRow;
+    } else {
+      bulkRows.push(newRow);
+    }
+    added++;
+  }
+
+  renderBulkGrid();
+
+  if (added > 0) {
+    _scrollBulkBottom();
+    // Collapse the panel after success
+    document.getElementById('bulk-paste-panel').style.display = 'none';
+    document.getElementById('bulk-paste-toggle-btn').classList.remove('active');
+    ta.value = '';
+  }
+
+  if (warn.length) {
+    const panel = document.getElementById('bulk-msg-panel');
+    panel.className = 'bulk-msg-panel bulk-msg-error';
+    panel.style.display = 'block';
+    panel.innerHTML =
+      `<div class="bulk-msg-hdr">
+        <span>&#9888;&nbsp; ${added} row${added !== 1 ? 's' : ''} added · ${warn.length} skipped</span>
+        <button class="bulk-msg-x" onclick="_hideBulkMsg()">&#10005;</button>
+      </div>
+      <div class="bulk-msg-errs">${warn.map(w => `<div class="bulk-msg-err-row">${escHtml(w)}</div>`).join('')}</div>`;
+  } else if (added > 0) {
+    _hideBulkMsg();
+  }
 }

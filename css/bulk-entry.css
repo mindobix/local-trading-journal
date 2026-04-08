@@ -68,7 +68,83 @@
 .bulk-act-btn:hover { border-color: var(--accent); color: var(--text); background: var(--surface3); }
 .bulk-new-trade-btn { color: var(--accent); border-color: rgba(99,102,241,0.4); }
 .bulk-new-trade-btn:hover { background: var(--accent-dim); }
+.bulk-paste-toggle-btn { color: var(--text-muted); }
+.bulk-paste-toggle-btn.active { color: var(--accent); border-color: rgba(99,102,241,0.5); background: var(--accent-dim); }
 .bulk-tb-divider { width: 1px; height: 24px; background: var(--border); }
+
+/* ─── PASTE & TRANSFORM PANEL ─── */
+.bulk-paste-panel {
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+.bulk-paste-inner {
+  padding: 12px 24px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 900px;
+}
+.bulk-paste-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.bulk-paste-ta {
+  width: 100%;
+  min-height: 90px;
+  max-height: 180px;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.bulk-paste-ta:focus { border-color: var(--accent); }
+.bulk-paste-ta::placeholder { color: var(--text-dim); }
+.bulk-paste-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.bulk-paste-btn {
+  padding: 6px 16px;
+  border-radius: var(--radius);
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+.bulk-paste-btn:hover { opacity: 0.85; }
+.bulk-paste-clear-btn {
+  padding: 5px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+.bulk-paste-clear-btn:hover { border-color: var(--accent); color: var(--text); }
+.bulk-paste-hint {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: 4px;
+}
 .bulk-save-btn {
   padding: 6px 16px;
   border-radius: var(--radius);
