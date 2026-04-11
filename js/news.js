@@ -5,10 +5,10 @@
 const NEWS_API  = 'http://localhost:3737/api';
 const NEWS_POLL = 30000; // 30s UI poll interval
 
-// ─── localStorage keys ────────────────────────────────────────────────────────
+// ─── IndexedDB settings keys (replaces localStorage keys) ────────────────────
 const NEWS_CONFIG_LS_KEY   = 'ltj_news_config';
 const NEWS_TAXONOMY_LS_KEY = 'ltj_news_taxonomy';
-const LLM_QUERIES_LS_KEY    = 'ltj_llm_queries';    // [{ id, llm, llmOther, category, prompt, createdAt }]
+const LLM_QUERIES_LS_KEY    = 'ltj_llm_queries';    // key for reference only
 const LLM_RESULTS_LS_KEY    = 'ltj_llm_results';    // { [id]: htmlString } — NOT in backup
 const LLM_CATEGORIES_LS_KEY = 'ltj_llm_categories'; // [string] user-defined categories
 
@@ -17,18 +17,41 @@ const PINNED_SYMS = ['MARKET', 'SPX', 'SPY', 'QQQ'];
 // Only MARKET gets its own feed section; all others share the ticker feed template.
 const MARKET_ONLY_SYMS = ['MARKET'];
 
-function _lsGetNewsConfig()   { try { return JSON.parse(localStorage.getItem(NEWS_CONFIG_LS_KEY));   } catch { return null; } }
-function _lsGetNewsTaxonomy() { try { return JSON.parse(localStorage.getItem(NEWS_TAXONOMY_LS_KEY)); } catch { return null; } }
-function _lsSaveNewsConfig(cfg)  { try { localStorage.setItem(NEWS_CONFIG_LS_KEY,   JSON.stringify(cfg));  } catch {} }
-function _lsSaveNewsTaxonomy(tx) { try { localStorage.setItem(NEWS_TAXONOMY_LS_KEY, JSON.stringify(tx));   } catch {} }
+// ─── IndexedDB-backed helpers (in-memory, pre-loaded by _initNewsStorage) ────
+// _news.config, _news.taxonomy and _llm.* are populated at startup.
+// Reads are synchronous (from memory); writes are async fire-and-forget.
 
-// ─── LLM storage helpers ──────────────────────────────────────────────────────
-function _llmLoadQueries()     { try { return JSON.parse(localStorage.getItem(LLM_QUERIES_LS_KEY))    || []; } catch { return []; } }
-function _llmLoadResults()     { try { return JSON.parse(localStorage.getItem(LLM_RESULTS_LS_KEY))    || {}; } catch { return {}; } }
-function _llmLoadCategories()  { try { return JSON.parse(localStorage.getItem(LLM_CATEGORIES_LS_KEY)) || []; } catch { return []; } }
-function _llmSaveQueries(q)    { try { localStorage.setItem(LLM_QUERIES_LS_KEY,    JSON.stringify(q)); } catch {} }
-function _llmSaveResults(r)    { try { localStorage.setItem(LLM_RESULTS_LS_KEY,    JSON.stringify(r)); } catch {} }
-function _llmSaveCategories(c) { try { localStorage.setItem(LLM_CATEGORIES_LS_KEY, JSON.stringify(c)); } catch {} }
+function _lsGetNewsConfig()      { return _news.config   || null; }
+function _lsGetNewsTaxonomy()    { return _news.taxonomy || null; }
+function _lsSaveNewsConfig(cfg)  { _news.config   = cfg; dbPutSetting(NEWS_CONFIG_LS_KEY,   cfg).catch(console.error); }
+function _lsSaveNewsTaxonomy(tx) { _news.taxonomy = tx;  dbPutSetting(NEWS_TAXONOMY_LS_KEY, tx).catch(console.error);  }
+
+// ─── LLM storage helpers (in-memory, pre-loaded by _initNewsStorage) ─────────
+function _llmLoadQueries()     { return _llm.queries;    }
+function _llmLoadResults()     { return _llm.results;    }
+function _llmLoadCategories()  { return _llm.categories; }
+function _llmSaveQueries(q)    { _llm.queries    = q; dbReplaceAll('llmQueries', q).catch(console.error); }
+function _llmSaveResults(r)    { _llm.results    = r; dbPutSetting(LLM_RESULTS_LS_KEY,    r).catch(console.error); }
+function _llmSaveCategories(c) { _llm.categories = c; dbPutSetting(LLM_CATEGORIES_LS_KEY, c).catch(console.error); }
+
+// ─── Async init — called once at app startup ──────────────────────────────────
+async function _initNewsStorage() {
+  // News config & taxonomy
+  const cfg = await dbGetSetting(NEWS_CONFIG_LS_KEY);
+  if (cfg) _news.config = cfg;
+  const tax = await dbGetSetting(NEWS_TAXONOMY_LS_KEY);
+  if (tax) _news.taxonomy = tax;
+
+  // LLM prompts / results / categories
+  const queries = await dbGetAll('llmQueries');
+  if (queries.length) _llm.queries = queries;
+
+  const results = await dbGetSetting(LLM_RESULTS_LS_KEY);
+  if (results) _llm.results = results;
+
+  const cats = await dbGetSetting(LLM_CATEGORIES_LS_KEY);
+  if (Array.isArray(cats)) _llm.categories = cats;
+}
 
 // ─── Default prompts (seeded on first load) ───────────────────────────────────
 const LLM_DEFAULT_PROMPTS = [
@@ -97,7 +120,7 @@ async function restoreNewsConfig(cfg) {
     await fetch(`${NEWS_API}/news/config`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cfg)
     });
-  } catch { /* server may be offline — localStorage already updated */ }
+  } catch { /* server may be offline — IndexedDB already updated */ }
   _renderSymbolTabs();
 }
 
@@ -109,7 +132,7 @@ async function restoreNewsTaxonomy(tx) {
     await fetch(`${NEWS_API}/news/taxonomy`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(tx)
     });
-  } catch { /* server may be offline — localStorage already updated */ }
+  } catch { /* server may be offline — IndexedDB already updated */ }
 }
 
 const _news = {
@@ -139,8 +162,8 @@ const _news = {
 
 // ─── LLM Prompts state ────────────────────────────────────────────────────────
 const _llm = {
-  queries:         [],   // loaded from localStorage on init
-  results:         {},   // { [id]: htmlString } — in localStorage, not in backup
+  queries:         [],   // loaded from IndexedDB on init (llmQueries store)
+  results:         {},   // { [id]: htmlString } — IndexedDB settings, not in backup
   categories:      [],   // user-defined prompt categories
   activeQueryId:   null, // currently selected query in left panel
   editingQueryId:  null, // null = view mode, 'new' = new form, id = editing existing
@@ -149,10 +172,7 @@ const _llm = {
 
 // ─── PUBLIC: called from switchView('news') ───────────────────────────────────
 async function initNewsView() {
-  // Load LLM data from localStorage before rendering shell
-  _llm.queries    = _llmLoadQueries();
-  _llm.results    = _llmLoadResults();
-  _llm.categories = _llmLoadCategories();
+  // _llm.queries / results / categories are pre-loaded by _initNewsStorage()
 
   // Seed default prompts and categories on first load
   if (_llm.queries.length === 0) {
@@ -198,9 +218,9 @@ async function _loadTaxonomy() {
     const r = await fetch(`${NEWS_API}/news/taxonomy`);
     if (!r.ok) throw new Error();
     _news.taxonomy = await r.json();
-    _lsSaveNewsTaxonomy(_news.taxonomy);      // keep localStorage in sync
+    _lsSaveNewsTaxonomy(_news.taxonomy);      // persist to IndexedDB
   } catch {
-    _news.taxonomy = _lsGetNewsTaxonomy();    // fall back to cached copy
+    _news.taxonomy = _lsGetNewsTaxonomy();    // fall back to in-memory cached copy
   }
 }
 
@@ -224,20 +244,20 @@ async function _loadReport(symbol) {
           // We have a real previous report — save its IDs and timestamp
           _news.prevReportIds[symbol]   = new Set(currentIds);
           _news.prevReportGenAt[symbol] = currentGenAt;
-          try {
-            localStorage.setItem(`ltj_prevRptIds_${symbol}`, JSON.stringify(currentIds));
-            localStorage.setItem(`ltj_prevRptGenAt_${symbol}`, currentGenAt);
-          } catch {}
+          dbPutSetting(`ltj_prevRptIds_${symbol}`,   currentIds).catch(console.error);
+          dbPutSetting(`ltj_prevRptGenAt_${symbol}`, currentGenAt).catch(console.error);
         } else if (!_news.prevReportIds[symbol]) {
-          // No in-memory snapshot yet — try to restore from localStorage
-          try {
-            const ids = JSON.parse(localStorage.getItem(`ltj_prevRptIds_${symbol}`) || 'null');
-            const at  = localStorage.getItem(`ltj_prevRptGenAt_${symbol}`);
-            if (ids?.length) {
-              _news.prevReportIds[symbol]   = new Set(ids);
-              _news.prevReportGenAt[symbol] = at;
-            }
-          } catch {}
+          // No in-memory snapshot yet — restore from IndexedDB asynchronously
+          (async () => {
+            try {
+              const ids = await dbGetSetting(`ltj_prevRptIds_${symbol}`);
+              const at  = await dbGetSetting(`ltj_prevRptGenAt_${symbol}`);
+              if (Array.isArray(ids) && ids.length) {
+                _news.prevReportIds[symbol]   = new Set(ids);
+                _news.prevReportGenAt[symbol] = at;
+              }
+            } catch {}
+          })();
         }
       }
     }
@@ -443,10 +463,10 @@ async function loadNewsConfig() {
     const r = await fetch(`${NEWS_API}/news/config`);
     if (!r.ok) throw new Error();
     _news.config = await r.json();
-    _lsSaveNewsConfig(_news.config);          // keep localStorage in sync (includes configVersion)
+    _lsSaveNewsConfig(_news.config);          // persist to IndexedDB
   } catch {
-    // Fall back to localStorage with version-aware migration, then hardcoded default
-    _news.config = _lsGetNewsConfigWithMigration()
+    // Fall back to IndexedDB-cached config (pre-loaded in _initNewsStorage), then hardcoded default
+    _news.config = _lsGetNewsConfig()
       || { configVersion: CLIENT_CONFIG_VERSION, symbols: ['TSLA','SPY','QQQ','MU','META'], sources: [...CLIENT_DEFAULT_SOURCES_V2] };
   }
   _renderSymbolTabs();
@@ -671,12 +691,14 @@ async function _loadAllReports() {
           const rep = c.representative;
           if (rep?.id) _news.articlesById[rep.id] = { ...rep, symbol: sym };
         }
-        // Load prevReportIds from localStorage if not already in memory
+        // Load prevReportIds from IndexedDB if not already in memory
         if (!_news.prevReportIds[sym]) {
-          try {
-            const ids = JSON.parse(localStorage.getItem(`ltj_prevRptIds_${sym}`) || 'null');
-            if (ids?.length) _news.prevReportIds[sym] = new Set(ids);
-          } catch {}
+          (async () => {
+            try {
+              const ids = await dbGetSetting(`ltj_prevRptIds_${sym}`);
+              if (Array.isArray(ids) && ids.length) _news.prevReportIds[sym] = new Set(ids);
+            } catch {}
+          })();
         }
       }
     } catch {}
@@ -1581,10 +1603,14 @@ async function _clearNews() {
     _news.report        = null;
     _news.prevReportIds = {};
     _news.prevReportGenAt = {};
-    // Clear persisted prev-report state from localStorage
-    Object.keys(localStorage)
-      .filter(k => k.startsWith('ltj_prevRptIds_') || k.startsWith('ltj_prevRptGenAt_'))
-      .forEach(k => localStorage.removeItem(k));
+    // Clear persisted prev-report state from IndexedDB (fire-and-forget)
+    dbGetAll('settings').then(rows => {
+      for (const row of rows) {
+        if (row.key.startsWith('ltj_prevRptIds_') || row.key.startsWith('ltj_prevRptGenAt_')) {
+          dbDeleteSetting(row.key).catch(console.error);
+        }
+      }
+    }).catch(console.error);
     _renderFeed();
     _renderReportPanel();
     _renderSymbolTabs();

@@ -1,11 +1,17 @@
-/* ── wotp-storage.js ── Option idea storage (separate from trades) ── */
-const IDEA_KEY = 'ow-ideas-v1';
+/* ── wotp-storage.js ── Option idea storage (IndexedDB-backed) ────────
+ *
+ * In-memory cache populated by _initWotpStorage() at app startup.
+ * Public API remains synchronous.
+ * ───────────────────────────────────────────────────────────────────── */
 
-function loadIdeas() {
-  try { return JSON.parse(localStorage.getItem(IDEA_KEY) || '[]'); }
-  catch { return []; }
+let _ideas = [];
+
+async function _initWotpStorage() {
+  _ideas = await dbGetAll('ideas');
 }
 
-function saveIdeas(ideas) {
-  localStorage.setItem(IDEA_KEY, JSON.stringify(ideas));
+function loadIdeas()        { return _ideas; }
+function saveIdeas(ideas)   {
+  _ideas = ideas;
+  dbReplaceAll('ideas', ideas).catch(console.error);
 }

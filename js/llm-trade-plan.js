@@ -1,24 +1,24 @@
 /* ── llm-trade-plan.js ── LLM Trade Plan tab ─────────────────────── */
 
-const LLM_PLAN_KEY = 'tj-llm-trade-plans-v1';
+// ── Storage (IndexedDB-backed, sync public API) ───────────────────────
 
-// ── Storage ───────────────────────────────────────────────────────────
+let _llmTradePlans = [];
 
-function loadLlmTradePlans() {
-  try { return JSON.parse(localStorage.getItem(LLM_PLAN_KEY) || '[]'); }
-  catch { return []; }
+async function _initLlmTradePlansStorage() {
+  _llmTradePlans = await dbGetAll('llmTradePlans');
 }
 
-function saveLlmTradePlans(plans) {
-  localStorage.setItem(LLM_PLAN_KEY, JSON.stringify(plans));
+function loadLlmTradePlans()        { return _llmTradePlans; }
+function saveLlmTradePlans(plans)   {
+  _llmTradePlans = plans;
+  dbReplaceAll('llmTradePlans', plans).catch(console.error);
 }
 
 function getLlmTradePlansForBackup() { return loadLlmTradePlans(); }
 
 function restoreLlmTradePlansFromBackup(plans) {
   if (!Array.isArray(plans)) return;
-  const existing = loadLlmTradePlans();
-  const map = new Map(existing.map(p => [p.id, p]));
+  const map = new Map(_llmTradePlans.map(p => [p.id, p]));
   for (const p of plans) map.set(p.id, p);
   saveLlmTradePlans([...map.values()]);
 }

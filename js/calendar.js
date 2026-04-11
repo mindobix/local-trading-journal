@@ -1,10 +1,19 @@
 const MONTH_NAMES = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 const DAY_NAMES   = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
 
-const _savedMonth = localStorage.getItem('tj-cal-month');
-let curMonth = _savedMonth
-  ? new Date(parseInt(_savedMonth.split('-')[0]), parseInt(_savedMonth.split('-')[1]), 1)
-  : new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+// curMonth is set to today initially; _initCalendarMonth() restores any
+// persisted position after IndexedDB is ready (called during app init).
+let curMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+async function _initCalendarMonth() {
+  const saved = await dbGetSetting('tj-cal-month');
+  if (saved) {
+    const parts = String(saved).split('-');
+    if (parts.length === 2) {
+      curMonth = new Date(parseInt(parts[0]), parseInt(parts[1]), 1);
+    }
+  }
+}
 
 function renderCalendar() {
   const trades = applyGlobalFilter(load());
@@ -176,14 +185,14 @@ function isoDate(d) {
 
 function shiftMonth(dir) {
   curMonth = new Date(curMonth.getFullYear(), curMonth.getMonth() + dir, 1);
-  localStorage.setItem('tj-cal-month', `${curMonth.getFullYear()}-${curMonth.getMonth()}`);
+  dbPutSetting('tj-cal-month', `${curMonth.getFullYear()}-${curMonth.getMonth()}`).catch(console.error);
   renderCalendar();
   renderWeeklySummary();
 }
 
 function jumpToday() {
   curMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-  localStorage.removeItem('tj-cal-month');
+  dbDeleteSetting('tj-cal-month').catch(console.error);
   renderCalendar();
   renderWeeklySummary();
 }

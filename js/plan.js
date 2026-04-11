@@ -1,7 +1,30 @@
 /* ── plan.js ── Trade Plan tab controller ────────────────────────── */
 
-// ── Daily plan journal storage ────────────────────────────────────
-const PLANS_KEY = 'tj-plans-v1';
+// ── Daily plan journal storage (IndexedDB-backed, sync public API) ───
+//
+// Plans are stored in IDB as individual records: { date, html }.
+// The in-memory cache is a plain object: { 'YYYY-MM-DD': htmlString }.
+// _initPlansStorage() is called once at app startup.
+
+let _plans = {};  // date → html
+
+async function _initPlansStorage() {
+  const records = await dbGetAll('plans');   // [{ date, html }, …]
+  _plans = {};
+  for (const r of records) _plans[r.date] = r.html;
+
+  // Restore last plan view (monthly / weekly / daily)
+  const savedView = await dbGetSetting('plan-last-view');
+  if (savedView && ['monthly', 'weekly', 'daily'].includes(savedView)) {
+    PLAN_STATE.view = savedView;
+  }
+}
+
+function loadPlans()                  { return _plans; }
+function savePlanForDate(date, html)  {
+  _plans[date] = html;
+  dbPut('plans', { date, html }).catch(console.error);
+}
 
 const PLAN_TEMPLATE = [
   '<h3>Pre Market Plan</h3><p><br></p>',
@@ -14,17 +37,6 @@ const PLAN_TEMPLATE = [
   '<h4>Reinforcement to myself</h4><p><br></p>',
   '<h3>Overall Recap</h3><p><br></p>',
 ].join('');
-
-function loadPlans() {
-  try { return JSON.parse(localStorage.getItem(PLANS_KEY) || '{}'); }
-  catch { return {}; }
-}
-
-function savePlanForDate(date, html) {
-  const plans = loadPlans();
-  plans[date]  = html;
-  localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
-}
 
 // ── Plan view state ───────────────────────────────────────────────
 const PLAN_STATE = {
@@ -207,7 +219,7 @@ function updatePlanNavLabel() {
 // ── View switching ────────────────────────────────────────────────
 function switchPlanView(v) {
   PLAN_STATE.view = v;
-  localStorage.setItem('plan-last-view', v);
+  dbPutSetting('plan-last-view', v).catch(console.error);
   document.querySelectorAll('.plan-view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
   if (v === 'monthly') {
     const d = new Date(PLAN_STATE.weekOf + 'T12:00:00');
@@ -444,9 +456,8 @@ function autoSaveDayPlan(date) {
 
 function deleteDayPlan(date) {
   if (!confirm('Delete the daily plan for this day? This cannot be undone.')) return;
-  const plans = loadPlans();
-  delete plans[date];
-  localStorage.setItem(PLANS_KEY, JSON.stringify(plans));
+  delete _plans[date];
+  dbDelete('plans', date).catch(console.error);
   renderPlanView();
 }
 
@@ -459,11 +470,7 @@ function initPlanView() {
   if (!planInitialized) {
     planInitialized = true;
 
-    // Restore last view
-    const savedView = localStorage.getItem('plan-last-view');
-    if (savedView && ['monthly', 'weekly', 'daily'].includes(savedView)) {
-      PLAN_STATE.view = savedView;
-    }
+    // plan-last-view is already applied to PLAN_STATE.view by _initPlansStorage()
 
     // Init idea modal
     initIdeaModal();

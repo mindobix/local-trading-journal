@@ -1,6 +1,6 @@
 const state = { view: 'calendar', tradesVisited: false };
 
-const APP_VERSION = '1.0.5';
+const APP_VERSION = '1.1.0';
 
 
 function toggleUtilDropdown(e) {
@@ -406,7 +406,9 @@ function restoreData(event) {
     saveTags(mergedTags);
     saveMistakes(mergedMistakes);
     saveRules(mergedRules);
-    localStorage.setItem(PLANS_KEY, JSON.stringify(mergedPlans));
+    // Persist merged plans to in-memory cache + IndexedDB
+    _plans = mergedPlans;
+    await dbReplaceAll('plans', Object.entries(mergedPlans).map(([date, html]) => ({ date, html })));
     saveIdeas(mergedIdeas);
 
     // Restore news settings (replace, not merge — they're whole config objects)
@@ -494,8 +496,26 @@ document.addEventListener('keydown', e => {
   }
 });
 
-// init
-initIdeaModal();
-updateFilterBarContext('calendar');
-renderStats();
-renderCalendar();
+// ── App init: open IndexedDB → migrate → load data → render ──────────
+(async () => {
+  try {
+    await _openTjDb();
+    await runMigrationIfNeeded();
+
+    // Pre-load all data into memory before first render
+    await _initStorageCore();
+    await _initWotpStorage();
+    await _initPlansStorage();
+    await _initLlmTradePlansStorage();
+    await _initNewsStorage();
+    await _initCalendarMonth();
+  } catch (e) {
+    console.error('[TJ] Storage init failed — app may not persist data.', e);
+  }
+
+  // Kick off the UI
+  initIdeaModal();
+  updateFilterBarContext('calendar');
+  renderStats();
+  renderCalendar();
+})();

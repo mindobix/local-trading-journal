@@ -20,7 +20,7 @@ Now includes a **Signal News** tab — a live market intelligence feed with AI-p
 | **No ads / upsells** | Never | Common |
 | **Market intelligence** | Signal News — AI analysis, live prices | Rare / paywalled |
 
-Your trade data is sensitive. Position sizes, entry timing, win rate, P&L — this is information you don't need to hand to a SaaS company. Local Trading Journal stores everything in your own browser's localStorage. There is no server. There is no account. There is no subscription.
+Your trade data is sensitive. Position sizes, entry timing, win rate, P&L — this is information you don't need to hand to a SaaS company. Local Trading Journal stores everything in your own browser's **IndexedDB** — a built-in database that grows with your data (no 5 MB quota). There is no server. There is no account. There is no subscription.
 
 ---
 
@@ -243,31 +243,44 @@ The server:
 - Caches article content, embeddings, scores, and summaries for fast incremental runs
 - Serves the full trading journal at `http://localhost:3737`
 
-**Browser requirements:** Any modern browser — Chrome 51+, Firefox 54+, Safari 10+, Edge 15+.
+**Browser requirements:** Any modern browser — Chrome 51+, Firefox 54+, Safari 10+, Edge 15+. IndexedDB is supported in all of these.
 
 ---
 
 ## Data & Privacy
 
-All trade data lives in your browser's `localStorage`. Nothing is transmitted anywhere.
+All trade data lives in your browser's **IndexedDB** (`trading-journal-db`). Nothing is transmitted anywhere.
 
-| Key | Contents |
-|-----|----------|
-| `tj-v1` | All trades |
-| `tj-rules-v1` | Trading rules |
-| `tj-tags-v1` | Custom tags |
-| `tj-mistakes-v1` | Mistake log |
-| `tj-plans-v1` | Daily journal entries |
-| `ow-ideas-v1` | Trade plan ideas |
+IndexedDB grows with your data — no 5 MB cap. On first load the app automatically migrates any data previously stored in `localStorage` into IndexedDB.
+
+**IndexedDB object stores**
+
+| Store | Key | Contents |
+|-------|-----|----------|
+| `trades` | `id` | All trades |
+| `rules` | `id` | Trading rules |
+| `tags` | `id` | Custom tags |
+| `mistakes` | `id` | Mistake log |
+| `plans` | `date` | Daily journal entries (`{ date, html }`) |
+| `ideas` | `id` | Trade plan ideas |
+| `llmTradePlans` | `id` | LLM Trade Plan cards |
+| `llmQueries` | `id` | LLM prompt entries |
+| `settings` | `key` | UI state, news config/taxonomy, LLM results, per-symbol report snapshots |
 
 Signal News data is stored locally under `news-crawler/data/` and is never sent to any external service.
 
+**Settings store keys**
+
 | Key | Contents | In backup? |
 |-----|----------|-----------|
-| `ltj_llm_queries` | LLM prompt entries (text, category, LLM) | Yes |
+| `ltj_news_config` | News sources config | Yes |
+| `ltj_news_taxonomy` | Signal taxonomy | Yes |
+| `ltj_llm_queries` | LLM queries reference key | Yes |
 | `ltj_llm_results` | LLM result HTML | No (local only) |
 | `ltj_llm_categories` | User-defined prompt categories | Yes |
-| `tj-llm-trade-plans-v1` | LLM Trade Plan cards (JSON, cardData, LLM source, timestamps) | Yes |
+| `tj-cal-month` | Last calendar position | No |
+| `plan-last-view` | Last plan view (monthly/weekly/daily) | No |
+| `ltj_prevRptIds_{symbol}` | Previous report article IDs per ticker | No |
 
 Use **Backup** in the header to export a full JSON snapshot. Use **Restore** to load it back into any browser. Data does not sync between devices — keep your backup file safe.
 
@@ -364,7 +377,9 @@ local-trading-journal/
 │   ├── llm.css             # LLM Prompts tab
 │   └── llm-trade-plan.css  # LLM Trade Plan tab
 ├── js/
-│   ├── app.js              # Init, view switching, CSV/backup/restore
+│   ├── db.js               # IndexedDB core — open/schema, CRUD helpers, settings helpers
+│   ├── migration.js        # One-time localStorage → IndexedDB migration (runs once on first load)
+│   ├── app.js              # Async init sequence, view switching, CSV/backup/restore
 │   ├── news.js             # Signal News + LLM Prompts tabs — UI, polling, report panel, prices, prompt manager
 │   ├── llm-trade-plan.js   # LLM Trade Plan tab — card editor, live preview, Trade Plan sync
 │   ├── calc.js             # FIFO P&L engine, stats aggregation
@@ -375,8 +390,8 @@ local-trading-journal/
 │   ├── trades.js           # Trades table
 │   ├── reports.js          # Reports tab
 │   ├── plan.js             # Trade Plan tab (3-view + daily editor)
-│   ├── storage.js          # localStorage: trades, tags, rules, mistakes, plans
-│   ├── wotp-storage.js     # localStorage: trade plan ideas
+│   ├── storage.js          # IndexedDB: trades, tags, rules, mistakes (in-memory cache)
+│   ├── wotp-storage.js     # IndexedDB: trade plan ideas (in-memory cache)
 │   ├── helpers.js          # Date formatting, HTML escaping
 │   └── wotp-helpers.js     # Week/month helpers, card color utilities
 └── news-crawler/           # Local background server (Node.js)
