@@ -9,9 +9,6 @@ function openBulkTradesView() {
   state.prevView = state.view;
   initBulkRows();
   document.getElementById('view-bulk').style.display = 'flex';
-  // Always open the paste panel when entering bulk view
-  document.getElementById('bulk-paste-panel').style.display = 'block';
-  document.getElementById('bulk-paste-toggle-btn').classList.add('active');
   window.addEventListener('beforeunload', _bulkBeforeUnload);
 }
 
@@ -432,59 +429,18 @@ function saveBulkTrades() {
 
   save([...load(), ...newTrades]);
   renderStats();
-  if (state.view === 'calendar') renderCalendar();
 
-  // Show success, then navigate
+  // Reset grid to empty, ready for the next batch
+  initBulkRows();
+
+  // Show persistent success toast with link — stay on bulk page
   const panel = document.getElementById('bulk-msg-panel');
   panel.className = 'bulk-msg-panel bulk-msg-success';
   panel.style.display = 'flex';
   panel.innerHTML =
-    `<span>&#10003;&nbsp; ${newTrades.length} trade${newTrades.length !== 1 ? 's' : ''} (${legCount} leg${legCount !== 1 ? 's' : ''}) added successfully!</span>`;
-
-  setTimeout(() => _afterBulkSave(minDate, maxDate), 1600);
-}
-
-function _afterBulkSave(minDate, maxDate) {
-  _bulkCleanup();
-  state.tradesVisited = true;
-
-  // Pre-load the trades snapshot with our desired filter BEFORE switchView restores it.
-  // Also covers the case where filterView === 'trades' and no restore happens.
-  const cleanSnap = {
-    srch: '', type: '', side: '',
-    date: 'custom', from: minDate, to: maxDate,
-    tags:     { include: [], exclude: [] },
-    rules:    { include: [], exclude: [] },
-    mistakes: { include: [], exclude: [] },
-    openPos:  false,
-  };
-  filterSnapshots.trades = cleanSnap;
-
-  // Switch view — updateFilterBarContext will apply our snapshot above
-  switchView('trades');
-
-  // Force the filter state one more time in case something overwrote it
-  // (e.g. filterView was already 'trades' so no snapshot was applied)
-  document.getElementById('gf-srch').value = '';
-  document.getElementById('gf-type').value = '';
-  document.getElementById('gf-side').value = '';
-  gfSelectedTags     = { include: [], exclude: [] };
-  gfSelectedRules    = { include: [], exclude: [] };
-  gfSelectedMistakes = { include: [], exclude: [] };
-  updateGfMultiLabel('tags');
-  updateGfMultiLabel('rules');
-  updateGfMultiLabel('mistakes');
-  openPosFilterActive = false;
-  document.getElementById('gf-open-pos-btn')?.classList.remove('active');
-  document.getElementById('gf-date').value = 'custom';
-  document.getElementById('gf-from').value = minDate;
-  document.getElementById('gf-to').value   = maxDate;
-  document.getElementById('gf-custom-range').style.display = 'flex';
-
-  // Render directly — avoids going through refreshAllViews which may check
-  // stale visibility or pick up an intermediate snapshot
-  renderActiveFilters();
-  renderTrades();
+    `<span>&#10003;&nbsp; ${newTrades.length} trade${newTrades.length !== 1 ? 's' : ''} (${legCount} leg${legCount !== 1 ? 's' : ''}) saved.</span>
+     <a class="bulk-toast-link" href="#" onclick="closeBulkView();drFrom='${minDate}';drTo='${maxDate}';document.getElementById('gf-from').value='${minDate}';document.getElementById('gf-to').value='${maxDate}';document.getElementById('gf-date').value='custom';_updateDrBtn();switchView('trades');return false;">View Trades &rarr;</a>
+     <button class="bulk-msg-x" onclick="_hideBulkMsg()" title="Dismiss">&#10005;</button>`;
 }
 
 // ─── PASTE & TRANSFORM ───
@@ -493,6 +449,13 @@ function toggleBulkPastePanel() {
   const panel = document.getElementById('bulk-paste-panel');
   const btn   = document.getElementById('bulk-paste-toggle-btn');
   const open  = panel.style.display === 'none';
+
+  // Close the Tradezella panel if open
+  if (open) {
+    document.getElementById('bulk-tradezella-panel').style.display = 'none';
+    document.getElementById('bulk-tz-toggle-btn').classList.remove('active');
+  }
+
   panel.style.display = open ? 'block' : 'none';
   btn.classList.toggle('active', open);
 }
@@ -750,6 +713,342 @@ function transformPastedTrades() {
     panel.innerHTML =
       `<div class="bulk-msg-hdr">
         <span>&#9888;&nbsp; ${added} row${added !== 1 ? 's' : ''} added · ${warn.length} skipped</span>
+        <button class="bulk-msg-x" onclick="_hideBulkMsg()">&#10005;</button>
+      </div>
+      <div class="bulk-msg-errs">${warn.map(w => `<div class="bulk-msg-err-row">${escHtml(w)}</div>`).join('')}</div>`;
+  } else if (added > 0) {
+    _hideBulkMsg();
+  }
+}
+
+// ─── TRADEZELLA CSV IMPORT ───
+
+function toggleTradezellaPanel() {
+  const panel  = document.getElementById('bulk-tradezella-panel');
+  const btn    = document.getElementById('bulk-tz-toggle-btn');
+  const open   = panel.style.display === 'none';
+
+  panel.style.display = open ? 'block' : 'none';
+  btn.classList.toggle('active', open);
+}
+
+function onTradezellaFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('bulk-tz-ta').value = e.target.result;
+  };
+  reader.readAsText(file);
+  // Reset so the same file can be re-selected
+  input.value = '';
+}
+
+// Parse a Tradezella datetime: dateStr="2025-05-27", timeStr="09:39:22 EDT"
+// Returns "YYYY-MM-DDTHH:MM" with second round-up rule (secs > 50 → bump minute).
+function _parseTzDatetime(dateStr, timeStr) {
+  // Strip timezone suffix (e.g. " EDT", " EST", " UTC")
+  const timePart = timeStr.trim().replace(/\s+[A-Z]{2,5}$/, '');
+  const combined = `${dateStr.trim()}T${timePart}`;
+  const d = new Date(combined);
+  if (isNaN(d.getTime())) return combined.slice(0, 16);
+
+  const secs = parseInt(timePart.split(':')[2] ?? '0', 10);
+  if (secs > 50) d.setMinutes(d.getMinutes() + 1, 0, 0);
+
+  const yyyy = d.getFullYear();
+  const mo   = String(d.getMonth() + 1).padStart(2, '0');
+  const dd   = String(d.getDate()).padStart(2, '0');
+  const hh   = String(d.getHours()).padStart(2, '0');
+  const mm   = String(d.getMinutes()).padStart(2, '0');
+  return `${yyyy}-${mo}-${dd}T${hh}:${mm}`;
+}
+
+// Extract HH and MM as integers from a time string like "09:39:22 EDT"
+function _tzTimeToMinutes(timeStr) {
+  const clean = timeStr.trim().replace(/\s+[A-Z]{2,5}$/, '');
+  const parts = clean.split(':');
+  return parseInt(parts[0], 10) * 60 + parseInt(parts[1], 10);
+}
+
+// Parse Tradezella Instrument column into bulk-row fields.
+// symbol = Symbol column value (e.g. "TSLA", "SPXW")
+// instrument = Instrument column (e.g. "2025-05-30 350 CALL" or "TSLA")
+// spreadType = "single" | "stock"
+function _parseTzInstrument(symbol, instrument, spreadType) {
+  const instr = instrument.trim();
+
+  // Option format: "2025-05-30 350 CALL" or "2025-05-30 5970 CALL"
+  const mOpt = instr.match(/^(\d{4}-\d{2}-\d{2})\s+([\d.]+)\s+(CALL|PUT)$/i);
+  if (mOpt) {
+    return {
+      symbol:      symbol.trim().toUpperCase(),
+      type:        'option',
+      optionType:  mOpt[3].toLowerCase(),
+      strikePrice: mOpt[2],
+      expiryDate:  mOpt[1],
+    };
+  }
+
+  // Fallback: stock (spread type = "stock" or instrument is just a ticker)
+  return {
+    symbol:      symbol.trim().toUpperCase(),
+    type:        'stock',
+    optionType:  '',
+    strikePrice: '',
+    expiryDate:  '',
+  };
+}
+
+// Look up a mistake by text (case-insensitive). If missing, create + persist it.
+// mutates mistakesList in place and calls saveMistakes().
+function _getOrCreateMistakeId(text, mistakesList) {
+  const lower = text.toLowerCase();
+  let entry = mistakesList.find(m => m.text.toLowerCase() === lower);
+  if (!entry) {
+    entry = { id: uid(), text };
+    mistakesList.push(entry);
+    saveMistakes(mistakesList);
+  }
+  return entry.id;
+}
+
+// Evaluate all auto-tagging rules and return an array of mistake IDs.
+// openTimeStr = raw time string from CSV e.g. "09:39:22 EDT"
+function _tzAutoMistakes(symbol, openTimeStr, quantity, entryPrice, type, mistakesList) {
+  const ids  = [];
+  const mins = _tzTimeToMinutes(openTimeStr);  // minutes since midnight (local)
+  const sym  = symbol.trim().toUpperCase();
+  const qty  = parseFloat(quantity) || 0;
+  const ep   = parseFloat(entryPrice) || 0;
+
+  const T930  = 9  * 60 + 30;
+  const T1130 = 11 * 60 + 30;
+  const T1600 = 16 * 60;       // 4:00 PM
+  const T1630 = 16 * 60 + 30;  // 4:30 PM
+
+  // 1. Always: Not Planned Trade
+  ids.push(_getOrCreateMistakeId('Not Planned Trade', mistakesList));
+
+  // 2. Pre & After Hours: open < 9:30 AM or open > 4:30 PM
+  if (mins < T930 || mins > T1630) {
+    ids.push(_getOrCreateMistakeId('Pre & After Hours', mistakesList));
+  }
+
+  // 3. SPXW after 11:30 AM
+  if (sym === 'SPXW' && mins > T1130) {
+    ids.push(_getOrCreateMistakeId('SPXW traded after 11:30am', mistakesList));
+  }
+
+  // 4. Other tickers after 11:30 AM (up to 4:00 PM — beyond that is "After Hours")
+  if (sym !== 'SPXW' && mins > T1130 && mins <= T1600) {
+    ids.push(_getOrCreateMistakeId('Traded between 11:30-4:00pm', mistakesList));
+  }
+
+  // 5. Oversized: > 5 contracts (options) or > 250 shares (stock)
+  const overLimit = type === 'option' ? 5 : 250;
+  if (qty > overLimit) {
+    ids.push(_getOrCreateMistakeId('Oversized', mistakesList));
+  }
+
+  // 6. Overpaid Entry Price: options where entry price >= $6
+  if (type === 'option' && ep >= 6) {
+    ids.push(_getOrCreateMistakeId('Overpaid Entry Price', mistakesList));
+  }
+
+  return ids;
+}
+
+// Parse a raw CSV line respecting quoted fields (RFC 4180 basics).
+function _parseCsvLine(line) {
+  const fields = [];
+  let cur = '', inQ = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQ) {
+      if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQ = false;
+      else cur += ch;
+    } else {
+      if (ch === '"') inQ = true;
+      else if (ch === ',') { fields.push(cur); cur = ''; }
+      else cur += ch;
+    }
+  }
+  fields.push(cur);
+  return fields.map(f => f.trim());
+}
+
+// Build a column-index map from the header row.
+// Supports both old and new Tradezella CSV layouts.
+// Returns an object whose keys are canonical field names and values are column indices.
+function _tzBuildColMap(headerCols) {
+  const map = {};
+  headerCols.forEach((h, i) => {
+    const k = h.toLowerCase().trim();
+    // Canonical name → normalised header variants
+    if (k === 'open date')                          map.openDate     = i;
+    else if (k === 'open time')                     map.openTime     = i;
+    else if (k === 'symbol')                        map.symbol       = i;
+    else if (k === 'instrument')                    map.instrument   = i;
+    else if (k === 'close date')                    map.closeDate    = i;
+    else if (k === 'close time')                    map.closeTime    = i;
+    else if (k === 'quantity')                      map.quantity     = i;
+    else if (k === 'fee')                           map.fee          = i;
+    // spread type — ignored
+    // Old format uses "entry price" / "exit price"
+    else if (k === 'entry price')                   map.entryPrice   = i;
+    else if (k === 'exit price')                    map.exitPrice    = i;
+    // New format uses "avg buy price" / "avg sell price"
+    else if (k === 'avg buy price')                 map.entryPrice   = i;
+    else if (k === 'avg sell price')                map.exitPrice    = i;
+    // Commission column (new format only)
+    else if (k === 'commission')                    map.commission   = i;
+    else if (k === 'side')                          map.side         = i;
+  });
+  return map;
+}
+
+function importTradezellaCSV() {
+  const ta  = document.getElementById('bulk-tz-ta');
+  const raw = ta.value.trim();
+  if (!raw) return;
+
+  const lines = raw.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return;
+
+  // Always expect a header row — build column map from it
+  const headerCols = _parseCsvLine(lines[0]);
+  const isHeader   = headerCols.some(h => /open date|symbol|instrument/i.test(h));
+  if (!isHeader) {
+    const panel = document.getElementById('bulk-msg-panel');
+    panel.className = 'bulk-msg-panel bulk-msg-error';
+    panel.style.display = 'block';
+    panel.innerHTML = `<div class="bulk-msg-hdr"><span>&#9888;&nbsp; Could not find a header row — paste CSV including the header line</span><button class="bulk-msg-x" onclick="_hideBulkMsg()">&#10005;</button></div>`;
+    return;
+  }
+  const col      = _tzBuildColMap(headerCols);
+  const dataLines = lines.slice(1);
+
+  const warn  = [];
+  let added   = 0;
+
+  let maxNum = 0;
+  for (const r of bulkRows) {
+    const m = r.tradeId.match(/^T(\d+)$/i);
+    if (m) maxNum = Math.max(maxNum, parseInt(m[1]));
+  }
+  const hasRealData = _bulkHasData();
+
+  // Load (and potentially mutate) mistakes list once for the whole import
+  const mistakesList = loadMistakes();
+
+  for (const line of dataLines) {
+    const cols = _parseCsvLine(line);
+    if (cols.length < 8) {
+      warn.push(`Skipped (too few columns): "${line.slice(0, 60)}"`);
+      continue;
+    }
+
+    const openDate       = cols[col.openDate]   ?? '';
+    const openTime       = cols[col.openTime]   ?? '';
+    const symbol         = cols[col.symbol]     ?? '';
+    const instrument     = cols[col.instrument] ?? '';
+    const closeDate      = cols[col.closeDate]  ?? '';
+    const closeTime      = cols[col.closeTime]  ?? '';
+    const quantityRaw    = cols[col.quantity]   ?? '';
+    const feeRaw         = cols[col.fee]        ?? '';
+    const entryPriceRaw  = col.entryPrice  != null ? (cols[col.entryPrice]  ?? '') : '';
+    const exitPriceRaw   = col.exitPrice   != null ? (cols[col.exitPrice]   ?? '') : '';
+    const commissionRaw  = col.commission  != null ? (cols[col.commission]  ?? '0') : '0';
+
+    if (!openDate || !openTime || !symbol) {
+      warn.push(`Skipped (missing key fields): "${line.slice(0, 60)}"`);
+      continue;
+    }
+
+    const instr = _parseTzInstrument(symbol, instrument || symbol, '');
+    const isShort        = instr.type === 'stock' && col.side != null && (cols[col.side] ?? '').toLowerCase() === 'short';
+    const openAction     = isShort ? 'sell' : 'buy';
+    const closeAction    = isShort ? 'buy'  : 'sell';
+    if (!instr) {
+      warn.push(`Skipped (unrecognised instrument): "${instrument}"`);
+      continue;
+    }
+
+    const openDt  = _parseTzDatetime(openDate, openTime);
+    const closeDt = _parseTzDatetime(closeDate || openDate, closeTime || openTime);
+
+    const qty        = parseFloat(quantityRaw)    || 0;
+    const fee        = parseFloat(feeRaw)          || 0;
+    const entryPrice = parseFloat(entryPriceRaw)  || 0;
+    const exitPrice  = parseFloat(exitPriceRaw)   || 0;
+    const commission = parseFloat(commissionRaw)  || 0;
+    const halfFee    = parseFloat((fee / 2).toFixed(4));
+    const halfComm   = parseFloat((commission / 2).toFixed(4));
+
+    // Auto-mistakes evaluated on open time / entry conditions
+    const mistakeIds = _tzAutoMistakes(
+      symbol, openTime, qty, entryPrice, instr.type, mistakesList
+    );
+
+    maxNum++;
+    const tradeId = 'T' + maxNum;
+
+    // BUY leg (open)
+    const buyRow = _newBulkRow(tradeId, {
+      ...instr,
+      action:     openAction,
+      datetime:   openDt,
+      quantity:   String(qty),
+      commission: String(halfComm),
+      fees:       String(halfFee),
+      tags: [], mistakes: [...mistakeIds], rules: [],
+    });
+    buyRow.price = String(entryPrice);
+
+    // SELL leg (close)
+    const sellRow = _newBulkRow(tradeId, {
+      ...instr,
+      action:     closeAction,
+      datetime:   closeDt,
+      quantity:   String(qty),
+      commission: String(halfComm),
+      fees:       String(halfFee),
+      tags: [], mistakes: [...mistakeIds], rules: [],
+    });
+    sellRow.price = String(exitPrice);
+
+    const lastRow = bulkRows[bulkRows.length - 1];
+    const reuseEmpty = !hasRealData && added === 0 &&
+      !lastRow.symbol && lastRow.price === '' && lastRow.quantity === '';
+
+    if (reuseEmpty) {
+      bulkRows[bulkRows.length - 1] = buyRow;
+      bulkRows.push(sellRow);
+    } else {
+      bulkRows.push(buyRow);
+      bulkRows.push(sellRow);
+    }
+    added++;
+  }
+
+  renderBulkGrid();
+
+  if (added > 0) {
+    _scrollBulkBottom();
+    document.getElementById('bulk-tradezella-panel').style.display = 'none';
+    document.getElementById('bulk-tz-toggle-btn').classList.remove('active');
+    ta.value = '';
+  }
+
+  if (warn.length) {
+    const panel = document.getElementById('bulk-msg-panel');
+    panel.className = 'bulk-msg-panel bulk-msg-error';
+    panel.style.display = 'block';
+    panel.innerHTML =
+      `<div class="bulk-msg-hdr">
+        <span>&#9888;&nbsp; ${added} trade${added !== 1 ? 's' : ''} imported · ${warn.length} row${warn.length !== 1 ? 's' : ''} skipped</span>
         <button class="bulk-msg-x" onclick="_hideBulkMsg()">&#10005;</button>
       </div>
       <div class="bulk-msg-errs">${warn.map(w => `<div class="bulk-msg-err-row">${escHtml(w)}</div>`).join('')}</div>`;

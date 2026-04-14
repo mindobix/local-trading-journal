@@ -86,18 +86,33 @@
     <option value="long">Long</option>
     <option value="short">Short</option>
   </select>
-  <select id="gf-date" onchange="onGlobalDateFilterChange()">
-    <option value="">All Dates</option>
-    <option value="daily">Today</option>
-    <option value="weekly">This Week</option>
-    <option value="monthly">This Month</option>
-    <option value="ytd">Year to Date</option>
-    <option value="custom">Custom Range</option>
-  </select>
-  <div id="gf-custom-range" style="display:none;gap:6px;align-items:center">
-    <input type="date" id="gf-from" onchange="onGlobalFilterChange()" style="min-width:0;width:136px">
-    <span style="color:var(--text-muted);font-size:12px">to</span>
-    <input type="date" id="gf-to" onchange="onGlobalFilterChange()" style="min-width:0;width:136px">
+  <!-- hidden compat inputs — filter logic reads these directly -->
+  <select id="gf-date" style="display:none"><option value=""></option><option value="custom"></option></select>
+  <input type="date" id="gf-from" style="display:none">
+  <input type="date" id="gf-to"   style="display:none">
+  <!-- date range picker -->
+  <div class="gf-dr-wrap" id="gf-dr-wrap">
+    <button class="gf-multi-btn gf-dr-btn" id="gf-dr-btn" onclick="toggleDrPicker(event)">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:.7"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+      <span id="gf-dr-label">Date Range</span>
+      <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;opacity:.6"><polyline points="6 9 12 15 18 9"/></svg>
+    </button>
+    <button class="gf-dr-clear" id="gf-dr-clear" onclick="clearDrPicker()" title="Clear date range" style="display:none">&#10005;</button>
+    <div class="gf-dr-popover" id="gf-dr-popover" style="display:none">
+      <div class="gf-dr-cals">
+        <div class="gf-dr-cal" id="gf-dr-cal-l"></div>
+        <div class="gf-dr-cal" id="gf-dr-cal-r"></div>
+      </div>
+      <div class="gf-dr-presets">
+        <button class="gf-dr-preset-btn" onclick="applyDrPreset('today')">Today</button>
+        <button class="gf-dr-preset-btn" onclick="applyDrPreset('thisweek')">This week</button>
+        <button class="gf-dr-preset-btn" onclick="applyDrPreset('thismonth')">This month</button>
+        <button class="gf-dr-preset-btn" onclick="applyDrPreset('last30')">Last 30 days</button>
+        <button class="gf-dr-preset-btn" onclick="applyDrPreset('lastmonth')">Last month</button>
+        <button class="gf-dr-preset-btn" onclick="applyDrPreset('thisquarter')">This quarter</button>
+        <button class="gf-dr-preset-btn" onclick="applyDrPreset('ytd')">YTD (year to date)</button>
+      </div>
+    </div>
   </div>
   <div class="gf-multiselect" id="gf-tags-wrap">
     <button type="button" class="gf-multi-btn" id="gf-tags-btn" onclick="toggleGfMultiDrop('tags')">
@@ -231,25 +246,30 @@
     <div class="trades-toolbar">
       <button class="trades-bulk-btn" onclick="openBulkTradesView()">&#9783; Bulk Trades</button>
     </div>
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th onclick="sortBy('date')">Date &#8597;</th>
-            <th onclick="sortBy('symbol')">Symbol &#8597;</th>
-            <th>Side</th>
-            <th>Type</th>
-            <th>Legs</th>
-            <th onclick="sortBy('pnl')">Net P&amp;L &#8597;</th>
-            <th>Mistakes</th>
-            <th>Rules</th>
-            <th>Tags</th>
-            <th>Notes</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="trades-body"></tbody>
-      </table>
+    <div class="trades-table-container">
+      <div id="trades-pg-top"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th class="col-rownum">#</th>
+              <th onclick="sortBy('date')">Date &#8597;</th>
+              <th onclick="sortBy('symbol')">Symbol &#8597;</th>
+              <th>Side</th>
+              <th>Type</th>
+              <th>Legs</th>
+              <th onclick="sortBy('pnl')">Net P&amp;L &#8597;</th>
+              <th>Mistakes</th>
+              <th>Rules</th>
+              <th>Tags</th>
+              <th>Notes</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="trades-body"></tbody>
+        </table>
+      </div>
+      <div id="trades-pg-bot"></div>
     </div>
   </div>
 
@@ -264,7 +284,7 @@
       <span class="bulk-count-label" id="bulk-count-label"></span>
     </div>
     <div class="bulk-topbar-actions">
-      <button class="bulk-act-btn bulk-paste-toggle-btn" id="bulk-paste-toggle-btn" onclick="toggleBulkPastePanel()" title="Paste &amp; Transform trades from copied broker data">&#128203; Paste &amp; Transform</button>
+      <button class="bulk-act-btn bulk-tz-toggle-btn" id="bulk-tz-toggle-btn" onclick="toggleTradezellaPanel()" title="Import Tradezella CSV export">&#128229; Tradezella CSV Import</button>
       <div class="bulk-tb-divider"></div>
       <button class="bulk-act-btn" onclick="addBulkRow(1)">+ Add a Row</button>
       <button class="bulk-act-btn" onclick="addBulkRow(2)">+ Add 2 Rows</button>
@@ -274,15 +294,18 @@
       <button class="bulk-close-btn" onclick="closeBulkView()" title="Close">&#10005;</button>
     </div>
   </div>
-  <!-- ─── PASTE & TRANSFORM PANEL ─── -->
-  <div class="bulk-paste-panel" id="bulk-paste-panel" style="display:none">
+  <!-- ─── TRADEZELLA CSV IMPORT PANEL ─── -->
+  <div class="bulk-paste-panel" id="bulk-tradezella-panel" style="display:none">
     <div class="bulk-paste-inner">
-      <div class="bulk-paste-label">Paste broker export data below (tab-separated)</div>
-      <textarea id="bulk-paste-ta" class="bulk-paste-ta" placeholder="Paste copied rows here — header row is auto-detected and skipped&#10;&#10;Example:&#10;06-04-2025 09:32:13&#9;META 06-06-2025 670 CALL&#9;6&#9;$8.88&#9;$0.18&#9;$3.9" onpaste="setTimeout(transformPastedTrades, 0)"></textarea>
+      <div class="bulk-paste-label">Tradezella CSV Import — paste or load your exported CSV</div>
+      <textarea id="bulk-tz-ta" class="bulk-paste-ta" placeholder="Paste Tradezella CSV here (including header row)&#10;&#10;Open Date,Open Time,Symbol,Status,Instrument,Close Date,Close Time,Quantity,Fee,Entry Price,Exit Price,Spread Type"></textarea>
       <div class="bulk-paste-actions">
-        <button class="bulk-paste-btn" onclick="transformPastedTrades()">&#10227; Transform</button>
-        <button class="bulk-paste-clear-btn" onclick="document.getElementById('bulk-paste-ta').value=''">Clear</button>
-        <span class="bulk-paste-hint">Rows are <strong>appended</strong> to the grid below</span>
+        <label class="bulk-paste-btn" style="cursor:pointer">&#128193; Choose CSV file
+          <input type="file" id="bulk-tz-file" accept=".csv" style="display:none" onchange="onTradezellaFileSelected(this)">
+        </label>
+        <button class="bulk-paste-btn" onclick="importTradezellaCSV()">&#10227; Import</button>
+        <button class="bulk-paste-clear-btn" onclick="document.getElementById('bulk-tz-ta').value=''">Clear</button>
+        <span class="bulk-paste-hint">Auto-tags mistakes &amp; creates <strong>2 legs per trade</strong> (open + close)</span>
       </div>
     </div>
   </div>

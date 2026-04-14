@@ -56,14 +56,7 @@ function switchView(v) {
   document.getElementById('nav-reports').classList.toggle('active', v === 'reports');
   document.getElementById('nav-news').classList.toggle('active',    v === 'news');
   updateFilterBarContext(v);
-  if (v === 'trades') {
-    if (!state.tradesVisited) {
-      state.tradesVisited = true;
-      document.getElementById('gf-date').value = 'monthly';
-      onGlobalDateFilterChange();
-    }
-    renderTrades();
-  }
+  if (v === 'trades') renderTrades();
   if (v === 'calendar') renderCalendar();
   if (v === 'plan')     initPlanView();
   if (v === 'reports')  initReportsView();
@@ -277,8 +270,12 @@ function closeImportErrors() {
 
 function backupData() {
   const backup = {
-    version:    6,  // v6: includes llmQueries (prompts only, not results)
+    version:    7,  // v7: adds settings (filterState, tradePageSize)
     exportedAt: new Date().toISOString(),
+    settings: {
+      filterState:   (typeof _captureFilterSnapshot === 'function') ? _captureFilterSnapshot() : null,
+      tradePageSize: (typeof tradePageSize !== 'undefined') ? tradePageSize : 100,
+    },
     trades:       load(),
     tags:         loadTags(),
     mistakes:     loadMistakes(),
@@ -431,6 +428,19 @@ function restoreData(event) {
       restoreLlmTradePlansFromBackup(incoming.llmTradePlans);
     }
 
+    // Restore settings (tradePageSize, filterState)
+    if (incoming.settings) {
+      const ps = parseInt(incoming.settings.tradePageSize, 10);
+      if (!isNaN(ps) && [50, 100, 200, 250].includes(ps)) {
+        tradePageSize = ps;
+        await dbPutSetting('tradePageSize', ps);
+      }
+      if (incoming.settings.filterState && typeof _applyFilterSnapshot === 'function') {
+        _applyFilterSnapshot(incoming.settings.filterState);
+        await dbPutSetting('filterState', incoming.settings.filterState);
+      }
+    }
+
     event.target.value = '';
 
     refreshAllViews();
@@ -509,6 +519,16 @@ document.addEventListener('keydown', e => {
     await _initLlmTradePlansStorage();
     await _initNewsStorage();
     await _initCalendarMonth();
+
+    // Restore persisted settings
+    const savedPageSize   = await dbGetSetting('tradePageSize');
+    const savedFilterState = await dbGetSetting('filterState');
+    if (savedPageSize && [50, 100, 200, 250].includes(savedPageSize)) {
+      tradePageSize = savedPageSize;
+    }
+    if (savedFilterState && typeof _applyFilterSnapshot === 'function') {
+      _applyFilterSnapshot(savedFilterState);
+    }
   } catch (e) {
     console.error('[TJ] Storage init failed — app may not persist data.', e);
   }

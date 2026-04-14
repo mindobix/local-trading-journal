@@ -1,9 +1,66 @@
 let sortField = 'date', sortDir = 'desc';
+let tradePage     = 1;
+let tradePageSize = 100;
 
 function sortBy(field) {
   sortDir = sortField === field ? (sortDir === 'asc' ? 'desc' : 'asc') : 'desc';
   sortField = field;
+  tradePage = 1;
   renderTrades();
+}
+
+function setTradePage(p) {
+  tradePage = p;
+  renderTrades();
+  document.getElementById('view-trades')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function setTradePageSize(n) {
+  tradePageSize = n;
+  tradePage = 1;
+  dbPutSetting('tradePageSize', n).catch(console.error);
+  renderTrades();
+}
+
+function _buildPaginationHTML(total, totalPages) {
+  if (total === 0) return '';
+  const start = (tradePage - 1) * tradePageSize + 1;
+  const end   = Math.min(tradePage * tradePageSize, total);
+
+  // Page number buttons — show up to 7: first, last, current ±2, ellipsis
+  const pages = [];
+  for (let i = 1; i <= totalPages; i++) {
+    if (i === 1 || i === totalPages || (i >= tradePage - 2 && i <= tradePage + 2)) {
+      pages.push(i);
+    } else if (pages[pages.length - 1] !== '…') {
+      pages.push('…');
+    }
+  }
+
+  const pageButtons = pages.map(p =>
+    p === '…'
+      ? `<span class="tpg-ellipsis">…</span>`
+      : `<button class="tpg-page${p === tradePage ? ' active' : ''}" onclick="setTradePage(${p})">${p}</button>`
+  ).join('');
+
+  const perPageBtns = [50, 100, 200, 250].map(n =>
+    `<button class="tpg-size${n === tradePageSize ? ' active' : ''}" onclick="setTradePageSize(${n})">${n}</button>`
+  ).join('');
+
+  return `<div class="trades-pagination">
+    <div class="tpg-left">
+      <button class="tpg-nav" onclick="setTradePage(${tradePage - 1})" ${tradePage === 1 ? 'disabled' : ''}>&#8592; Prev</button>
+      <div class="tpg-pages">${pageButtons}</div>
+      <button class="tpg-nav" onclick="setTradePage(${tradePage + 1})" ${tradePage === totalPages ? 'disabled' : ''}>Next &#8594;</button>
+    </div>
+    <div class="tpg-right">
+      <span class="tpg-info">Showing <strong>${start}–${end}</strong> of <strong>${total}</strong> trade${total !== 1 ? 's' : ''}</span>
+      <div class="tpg-sizes">
+        <span class="tpg-size-label">Per page:</span>
+        ${perPageBtns}
+      </div>
+    </div>
+  </div>`;
 }
 
 function legsSummary(t) {
@@ -31,17 +88,32 @@ function renderTrades() {
     return 0;
   });
 
+  const total      = trades.length;
+  const totalPages = Math.max(1, Math.ceil(total / tradePageSize));
+  if (tradePage > totalPages) tradePage = totalPages;
+
+  const pgHTML = _buildPaginationHTML(total, totalPages);
+  const pgTop  = document.getElementById('trades-pg-top');
+  const pgBot  = document.getElementById('trades-pg-bot');
+  if (pgTop) pgTop.innerHTML = pgHTML;
+  if (pgBot) pgBot.innerHTML = pgHTML;
+
   const tbody = document.getElementById('trades-body');
-  if (!trades.length) {
-    tbody.innerHTML = `<tr class="empty-row"><td colspan="11">No trades found. Click a calendar day or use "+ Add Trade" to get started.</td></tr>`;
+  if (!total) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="12">No trades found. Click a calendar day or use "+ Add Trade" to get started.</td></tr>`;
     return;
   }
+
+  // Slice to current page
+  const start = (tradePage - 1) * tradePageSize;
+  trades = trades.slice(start, start + tradePageSize);
 
   const allMistakes = loadMistakes();
   const allRules    = loadRules();
   const allTags     = loadTags();
 
-  tbody.innerHTML = trades.map(t => {
+  const pageOffset = (tradePage - 1) * tradePageSize;
+  tbody.innerHTML = trades.map((t, i) => {
     const pnl    = getPnl(t);
     const pnlCls = pnl >= 0 ? 'pos' : 'neg';
     const pnlStr = (pnl >= 0 ? '+$' : '-$') + Math.abs(pnl).toFixed(2);
@@ -77,15 +149,16 @@ function renderTrades() {
       .filter(Boolean).join(' ');
 
     return `<tr>
+      <td class="col-rownum-cell">${pageOffset + i + 1}</td>
       <td>${dateStr}</td>
       <td><strong>${t.symbol}</strong></td>
       <td>${sideLabel}</td>
       <td>${typeLbl}</td>
       <td>${legsSummary(t)}</td>
       <td class="${pnlCls}" style="font-weight:700">${pnlStr}</td>
-      <td style="white-space:normal">${mistakePills || '—'}</td>
-      <td style="white-space:normal">${rulePills || '—'}</td>
-      <td style="white-space:normal">${tagPills || '—'}</td>
+      <td>${mistakePills ? `<div class="trade-pills-wrap">${mistakePills}</div>` : '<span class="trade-pills-empty">—</span>'}</td>
+      <td>${rulePills   ? `<div class="trade-pills-wrap">${rulePills}</div>`   : '<span class="trade-pills-empty">—</span>'}</td>
+      <td>${tagPills    ? `<div class="trade-pills-wrap">${tagPills}</div>`    : '<span class="trade-pills-empty">—</span>'}</td>
       <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;color:var(--text-muted)">${t.notes || '—'}</td>
       <td>
         <div style="display:flex;gap:5px">

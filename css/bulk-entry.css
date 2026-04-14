@@ -195,6 +195,15 @@
   align-items: center;
   gap: 16px;
 }
+.bulk-toast-link {
+  color: var(--green);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.bulk-toast-link:hover { opacity: 0.8; }
 .bulk-msg-hdr {
   display: flex;
   align-items: center;

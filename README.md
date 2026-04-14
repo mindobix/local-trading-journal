@@ -63,6 +63,8 @@ Click the edit icon on any trade and the form opens directly below that trade �
 - Duplicate the previous row with one click to speed up multi-leg entry
 - Unsaved changes trigger a browser leave-confirmation so you never lose work accidentally
 - Import trades in bulk from a CSV file (broker export or manual entry) — download the column template from the app header
+- **Tradezella CSV Import** — import directly from a Tradezella export. Each completed trade row becomes two execution legs (BUY open + SELL close). Supports both old and new Tradezella CSV column layouts automatically. Short stock trades are detected and flipped (SELL open → BUY close). Commission is split evenly across both legs. Mistake tags are auto-created from trade metadata: *Not Planned Trade*, *Traded between 11:30–4:00pm*, *Impulsive Trade* (SPXW options after 3:30pm), and *Add to Losing Trade*.
+- After saving, the page stays on Bulk Trade Entry. A persistent toast shows the saved count, a **View Trades →** link that pre-filters to the imported date range, and a × dismiss button.
 - Full JSON backup/restore — export everything (trades, tags, rules, plans, ideas, LLM prompts) and restore it to any browser
 
 ### Calendar Tab
@@ -73,13 +75,19 @@ The default landing view. Click any day to open a detailed daily breakdown or an
 **Weekly view** — aggregates P&L, trade count, wins, and losses across the full week with per-day grouping.
 
 ### Trades Tab
-A sortable, filterable table of every trade across all dates with columns: Date, Symbol, Side, Type, Legs, Net P&L, plus three pill columns before Notes:
+A sortable, filterable table of every trade across all dates with columns: #, Date, Symbol, Side, Type, Legs, Net P&L, plus three pill columns before Notes:
 
-- **Mistakes** — red pills for each mistake tagged on the trade
-- **Rules** — green pills for each trading rule followed
-- **Tags** — amber pills for each custom tag
+- **Mistakes** — red chips for each mistake tagged on the trade
+- **Rules** — green chips for each trading rule followed
+- **Tags** — amber chips for each custom tag
 
 Empty cells show a dash. Click any column header to sort ascending/descending. Filter any view by date range, symbol, tags, mistakes, rules, trade type, and more — include/exclude modes let you drill into exactly the subset you want.
+
+**Date Range Picker** — the date filter uses a two-calendar popover. Tap once to set the start date (popover stays open), tap again to set the end date (popover closes and applies). Quick presets: Today, This Week, This Month, Last 30 Days, Last Month, This Quarter, YTD.
+
+**Unified filter** — Calendar and Trades tabs share one filter state. Switching tabs never loses your active filter. Filter state is persisted to IndexedDB and restored on next load.
+
+**Pagination** — top and bottom pagination bars are embedded inside the table border. Default 100 trades per page; options 50 / 100 / 200 / 250. Choice persists across sessions. Row numbers (#) show global position across pages.
 
 ### Trade Plan Tab
 A three-view (Monthly / Weekly / Daily) option trade plan tracker:
@@ -281,6 +289,8 @@ Signal News data is stored locally under `news-crawler/data/` and is never sent 
 | `tj-cal-month` | Last calendar position | No |
 | `plan-last-view` | Last plan view (monthly/weekly/daily) | No |
 | `ltj_prevRptIds_{symbol}` | Previous report article IDs per ticker | No |
+| `filterState` | Active global filter snapshot | Yes |
+| `tradePageSize` | Trades per page preference | Yes |
 
 Use **Backup** in the header to export a full JSON snapshot. Use **Restore** to load it back into any browser. Data does not sync between devices — keep your backup file safe.
 

@@ -5,10 +5,6 @@ let gfSelectedRules    = { include: [], exclude: [] };
 let gfSelectedMistakes = { include: [], exclude: [] };
 const gfMultiActiveTab = { tags: 'include', rules: 'include', mistakes: 'include' };
 
-// ─── PER-TAB FILTER SNAPSHOTS ───
-// Each filterable tab (calendar, trades) keeps its own independent filter state.
-const _emptySnap = () => ({ srch:'', type:'', side:'', date:'', from:'', to:'', tags:{include:[],exclude:[]}, rules:{include:[],exclude:[]}, mistakes:{include:[],exclude:[]}, openPos:false });
-const filterSnapshots = { calendar: _emptySnap(), trades: _emptySnap() };
 let filterView = 'calendar'; // which tab's filters are currently shown in the bar
 
 function _captureFilterSnapshot() {
@@ -33,7 +29,8 @@ function _applyFilterSnapshot(snap) {
   document.getElementById('gf-date').value = snap.date;
   document.getElementById('gf-from').value = snap.from;
   document.getElementById('gf-to').value   = snap.to;
-  document.getElementById('gf-custom-range').style.display = snap.date === 'custom' ? 'flex' : 'none';
+  drFrom = snap.from || ''; drTo = snap.to || '';
+  _updateDrBtn();
   gfSelectedTags     = { include: [...snap.tags.include],     exclude: [...snap.tags.exclude] };
   gfSelectedRules    = { include: [...snap.rules.include],    exclude: [...snap.rules.exclude] };
   gfSelectedMistakes = { include: [...snap.mistakes.include], exclude: [...snap.mistakes.exclude] };
@@ -139,8 +136,10 @@ function toggleOpenPositions() {
 }
 
 function onGlobalFilterChange() {
+  if (typeof tradePage !== 'undefined') tradePage = 1;
   renderActiveFilters();
   refreshAllViews();
+  dbPutSetting('filterState', _captureFilterSnapshot()).catch(console.error);
 }
 
 function onGlobalDateFilterChange() {
@@ -151,13 +150,15 @@ function onGlobalDateFilterChange() {
 }
 
 function resetGlobalFilters() {
-  document.getElementById('gf-srch').value  = '';
-  document.getElementById('gf-type').value  = '';
-  document.getElementById('gf-side').value  = '';
-  document.getElementById('gf-date').value  = '';
-  document.getElementById('gf-from').value  = '';
-  document.getElementById('gf-to').value    = '';
-  document.getElementById('gf-custom-range').style.display = 'none';
+  document.getElementById('gf-srch').value = '';
+  document.getElementById('gf-type').value = '';
+  document.getElementById('gf-side').value = '';
+  drFrom = ''; drTo = '';
+  document.getElementById('gf-date').value = '';
+  document.getElementById('gf-from').value = '';
+  document.getElementById('gf-to').value   = '';
+  _updateDrBtn();
+  if (typeof tradePage !== 'undefined') tradePage = 1;
   gfSelectedTags     = { include: [], exclude: [] };
   gfSelectedRules    = { include: [], exclude: [] };
   gfSelectedMistakes = { include: [], exclude: [] };
@@ -240,14 +241,6 @@ function updateGfMultiLabel(type) {
 }
 
 function updateFilterBarContext(view) {
-  // Save current filter state when leaving a filterable tab
-  if ((filterView === 'calendar' || filterView === 'trades') && view !== filterView) {
-    filterSnapshots[filterView] = _captureFilterSnapshot();
-  }
-  // Restore saved filter state when entering a filterable tab
-  if ((view === 'calendar' || view === 'trades') && view !== filterView) {
-    _applyFilterSnapshot(filterSnapshots[view]);
-  }
   if (view === 'calendar' || view === 'trades') filterView = view;
 
   const isPlan    = view === 'plan';
@@ -401,11 +394,8 @@ function clearGfChip(type, id) {
       document.getElementById('gf-side').value = '';
       break;
     case 'date':
-      document.getElementById('gf-date').value = '';
-      document.getElementById('gf-from').value = '';
-      document.getElementById('gf-to').value   = '';
-      document.getElementById('gf-custom-range').style.display = 'none';
-      break;
+      clearDrPicker();
+      return;  // clearDrPicker already calls onGlobalFilterChange
     case 'tag-incl':
       gfSelectedTags.include = gfSelectedTags.include.filter(x => x !== id);
       updateGfMultiLabel('tags');
@@ -450,3 +440,222 @@ function refreshAllViews() {
   if (planVisible && typeof PLAN_STATE !== 'undefined' && planInitialized) renderPlanView();
   if (reportsVisible) renderReportContent();
 }
+
+// ─── DATE RANGE PICKER ───────────────────────────────────────────────────────
+
+let drFrom = '', drTo = '';
+let drHover = '';
+let drLeftYear  = new Date().getFullYear();
+let drLeftMonth = new Date().getMonth();
+let drPickingFrom = true;
+
+const _DR_MONTHS = ['January','February','March','April','May','June',
+                    'July','August','September','October','November','December'];
+const _DR_DAYS   = ['Su','Mo','Tu','We','Th','Fr','Sa'];
+
+function _drPad(n) { return String(n).padStart(2, '0'); }
+function _drFmt(d) {
+  return `${d.getFullYear()}-${_drPad(d.getMonth()+1)}-${_drPad(d.getDate())}`;
+}
+function _drFmtDisplay(s) {
+  if (!s) return '';
+  const [y, m, d] = s.split('-');
+  return `${_DR_MONTHS[parseInt(m,10)-1].slice(0,3)} ${d}, ${y}`;
+}
+
+function toggleDrPicker(e) {
+  e.stopPropagation();
+  const pop = document.getElementById('gf-dr-popover');
+  if (pop.style.display !== 'none') { pop.style.display = 'none'; return; }
+  if (drFrom) {
+    const [y, m] = drFrom.split('-').map(Number);
+    drLeftYear = y; drLeftMonth = m - 1;
+  } else {
+    const t = new Date();
+    drLeftYear = t.getFullYear(); drLeftMonth = t.getMonth();
+  }
+  _renderDrCals();
+  pop.style.display = 'flex';
+}
+
+function _drRightYM() {
+  let m = drLeftMonth + 1, y = drLeftYear;
+  if (m > 11) { m = 0; y++; }
+  return [y, m];
+}
+
+function _renderDrCals() {
+  _renderDrCal('l', drLeftYear, drLeftMonth);
+  const [ry, rm] = _drRightYM();
+  _renderDrCal('r', ry, rm);
+}
+
+function _renderDrCal(side, year, month) {
+  const el = document.getElementById(`gf-dr-cal-${side}`);
+  if (!el) return;
+  const today     = _drFmt(new Date());
+  const firstDay  = new Date(year, month, 1).getDay();
+  const daysInMo  = new Date(year, month + 1, 0).getDate();
+  const daysInPrev= new Date(year, month, 0).getDate();
+
+  let html = `<div class="gf-dr-cal-hdr">`;
+  html += side === 'l'
+    ? `<button class="gf-dr-nav" onclick="drNavMonth(-1)">&#8249;</button>`
+    : `<span class="gf-dr-nav-spacer"></span>`;
+  html += `<span class="gf-dr-cal-title">${_DR_MONTHS[month]} ${year}</span>`;
+  html += side === 'r'
+    ? `<button class="gf-dr-nav" onclick="drNavMonth(1)">&#8250;</button>`
+    : `<span class="gf-dr-nav-spacer"></span>`;
+  html += `</div><div class="gf-dr-cal-grid">`;
+
+  for (const d of _DR_DAYS) html += `<div class="gf-dr-dow">${d}</div>`;
+
+  for (let i = 0; i < firstDay; i++) {
+    html += `<div class="gf-dr-day other-month">${daysInPrev - firstDay + i + 1}</div>`;
+  }
+
+  for (let d = 1; d <= daysInMo; d++) {
+    const ds = `${year}-${_drPad(month+1)}-${_drPad(d)}`;
+    let cls = 'gf-dr-day';
+    if (ds === today)                              cls += ' today';
+    if (drFrom && ds === drFrom)                   cls += ' range-start';
+    if (drTo   && ds === drTo)                     cls += ' range-end';
+    if (drFrom && drTo && ds > drFrom && ds < drTo) cls += ' in-range';
+    html += `<div class="${cls}" data-date="${ds}" onclick="drDayClick(event,'${ds}')" onmouseenter="drDayHover('${ds}')">${d}</div>`;
+  }
+
+  const trailing = (firstDay + daysInMo) % 7;
+  if (trailing) for (let i = 1; i <= 7 - trailing; i++)
+    html += `<div class="gf-dr-day other-month">${i}</div>`;
+
+  html += `</div>`;
+  el.innerHTML = html;
+}
+
+function drNavMonth(delta) {
+  drLeftMonth += delta;
+  if (drLeftMonth < 0)  { drLeftMonth = 11; drLeftYear--; }
+  if (drLeftMonth > 11) { drLeftMonth = 0;  drLeftYear++; }
+  _renderDrCals();
+}
+
+function drDayHover(ds) {
+  if (!drPickingFrom && drFrom && drHover !== ds) {
+    drHover = ds;
+    _updateDrDayClasses();
+  }
+}
+
+function _updateDrDayClasses() {
+  const today = _drFmt(new Date());
+  const previewEnd = drHover || drTo;
+  const lo = drFrom && previewEnd ? (drFrom <= previewEnd ? drFrom : previewEnd) : drFrom;
+  const hi = drFrom && previewEnd ? (drFrom <= previewEnd ? previewEnd : drFrom) : previewEnd;
+
+  document.querySelectorAll('#gf-dr-popover .gf-dr-day:not(.other-month)').forEach(el => {
+    const ds = el.getAttribute('data-date');
+    if (!ds) return;
+    el.className = 'gf-dr-day';
+    if (ds === today)               el.classList.add('today');
+    if (lo && ds === lo)            el.classList.add('range-start');
+    if (hi && ds === hi)            el.classList.add('range-end');
+    if (lo && hi && ds > lo && ds < hi) el.classList.add('in-range');
+  });
+}
+
+function drDayClick(e, ds) {
+  e.stopPropagation();
+  if (drPickingFrom) {
+    drFrom = ds; drTo = ''; drHover = ''; drPickingFrom = false;
+  } else {
+    if (ds < drFrom) { drTo = drFrom; drFrom = ds; }
+    else              { drTo = ds; }
+    drHover = ''; drPickingFrom = true;
+    _applyDrRange();
+    return;
+  }
+  _renderDrCals();
+}
+
+function _applyDrRange() {
+  document.getElementById('gf-from').value = drFrom;
+  document.getElementById('gf-to').value   = drTo;
+  document.getElementById('gf-date').value = 'custom';
+  document.getElementById('gf-dr-popover').style.display = 'none';
+  _updateDrBtn();
+  onGlobalFilterChange();
+}
+
+function applyDrPreset(preset) {
+  const n   = new Date(); n.setHours(0,0,0,0);
+  const fmt = _drFmt;
+  let from, to;
+  switch (preset) {
+    case 'today':
+      from = to = fmt(n); break;
+    case 'thisweek': {
+      const s = new Date(n); s.setDate(n.getDate() - n.getDay());
+      const e = new Date(s); e.setDate(s.getDate() + 6);
+      from = fmt(s); to = fmt(e); break;
+    }
+    case 'thismonth':
+      from = `${n.getFullYear()}-${_drPad(n.getMonth()+1)}-01`;
+      to   = fmt(new Date(n.getFullYear(), n.getMonth()+1, 0)); break;
+    case 'last30': {
+      const s = new Date(n); s.setDate(s.getDate() - 29);
+      from = fmt(s); to = fmt(n); break;
+    }
+    case 'lastmonth': {
+      const last = new Date(n.getFullYear(), n.getMonth(), 0);
+      from = `${last.getFullYear()}-${_drPad(last.getMonth()+1)}-01`;
+      to   = fmt(last); break;
+    }
+    case 'thisquarter': {
+      const q = Math.floor(n.getMonth() / 3);
+      from = `${n.getFullYear()}-${_drPad(q*3+1)}-01`;
+      to   = fmt(new Date(n.getFullYear(), q*3+3, 0)); break;
+    }
+    case 'ytd':
+      from = `${n.getFullYear()}-01-01`; to = fmt(n); break;
+  }
+  drFrom = from; drTo = to; drPickingFrom = true;
+  _applyDrRange();
+}
+
+function clearDrPicker() {
+  drFrom = ''; drTo = ''; drPickingFrom = true;
+  document.getElementById('gf-from').value = '';
+  document.getElementById('gf-to').value   = '';
+  document.getElementById('gf-date').value = '';
+  document.getElementById('gf-dr-popover').style.display = 'none';
+  _updateDrBtn();
+  onGlobalFilterChange();
+}
+
+function _updateDrBtn() {
+  const label = document.getElementById('gf-dr-label');
+  const clear = document.getElementById('gf-dr-clear');
+  const btn   = document.getElementById('gf-dr-btn');
+  if (!label) return;
+  if (drFrom && drTo) {
+    label.textContent = `${_drFmtDisplay(drFrom)} – ${_drFmtDisplay(drTo)}`;
+    clear.style.display = 'flex'; btn.classList.add('active');
+  } else if (drFrom) {
+    label.textContent = `From ${_drFmtDisplay(drFrom)}`;
+    clear.style.display = 'flex'; btn.classList.add('active');
+  } else {
+    label.textContent = 'Date Range';
+    clear.style.display = 'none'; btn.classList.remove('active');
+  }
+}
+
+// Close picker when clicking outside
+document.addEventListener('click', e => {
+  const wrap = document.getElementById('gf-dr-wrap');
+  const pop  = document.getElementById('gf-dr-popover');
+  if (pop && pop.style.display !== 'none' && wrap && !wrap.contains(e.target)) {
+    pop.style.display = 'none';
+    drHover = '';
+    if (!drTo) { drFrom = ''; drPickingFrom = true; _updateDrBtn(); }
+  }
+});
