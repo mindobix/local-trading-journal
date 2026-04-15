@@ -81,6 +81,40 @@ function openEditIdeaModal(id) {
 function closeIdeaModal() {
   document.getElementById('idea-overlay').classList.remove('open');
   document.getElementById('idea-modal').classList.remove('open');
+  _hideIdeaJsonPanel();
+}
+
+// ── JSON paste panel ──────────────────────────────────────────────
+function toggleIdeaJsonPanel() {
+  const panel = document.getElementById('idea-json-panel');
+  const isOpen = panel.classList.toggle('open');
+  document.getElementById('idea-json-toggle').classList.toggle('active', isOpen);
+  if (isOpen) {
+    document.getElementById('idea-json-ta').focus();
+  }
+}
+
+function _hideIdeaJsonPanel() {
+  document.getElementById('idea-json-panel').classList.remove('open');
+  document.getElementById('idea-json-toggle').classList.remove('active');
+  document.getElementById('idea-json-ta').value = '';
+  document.getElementById('idea-json-err').textContent = '';
+}
+
+function _applyIdeaJson(raw) {
+  const errEl = document.getElementById('idea-json-err');
+  errEl.textContent = '';
+  let data;
+  try { data = JSON.parse(raw.trim()); } catch (e) {
+    errEl.textContent = 'Invalid JSON — ' + e.message;
+    return;
+  }
+  // Map targets array or individual target fields
+  if (!data.targets && (data.target1 || data.target2 || data.target3)) {
+    data.targets = [data.target1, data.target2, data.target3].filter(Boolean);
+  }
+  _populateIdeaForm(data);
+  _hideIdeaJsonPanel();
 }
 
 function _openIdeaOverlay() {
@@ -189,6 +223,13 @@ function initIdeaModal() {
     document.getElementById('if-color').value = color;
     _syncIdeaSwatchToColor(color);
     _updateIdeaColorHint(color);
+  });
+
+  document.getElementById('idea-json-ta').addEventListener('paste', e => {
+    setTimeout(() => {
+      const val = document.getElementById('idea-json-ta').value.trim();
+      if (val) _applyIdeaJson(val);
+    }, 0);
   });
 
   document.getElementById('idea-modal-save').addEventListener('click', saveIdea);

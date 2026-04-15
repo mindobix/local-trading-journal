@@ -221,6 +221,23 @@ function switchPlanView(v) {
   PLAN_STATE.view = v;
   dbPutSetting('plan-last-view', v).catch(console.error);
   document.querySelectorAll('.plan-view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+
+  const isLlm = v === 'llm';
+  const mainWrap = document.getElementById('plan-main-wrap');
+  const llmWrap  = document.getElementById('plan-llm-wrap');
+  const navCtrl  = document.getElementById('plan-nav-controls');
+  const addBtn   = document.querySelector('.plan-add-btn');
+
+  if (mainWrap) mainWrap.style.display = isLlm ? 'none' : '';
+  if (llmWrap)  llmWrap.style.display  = isLlm ? ''     : 'none';
+  if (navCtrl)  navCtrl.style.display  = isLlm ? 'none' : '';
+  if (addBtn)   addBtn.style.display   = isLlm ? 'none' : '';
+
+  if (isLlm) {
+    if (typeof _showLlmInPlan === 'function') _showLlmInPlan();
+    return;
+  }
+
   if (v === 'monthly') {
     const d = new Date(PLAN_STATE.weekOf + 'T12:00:00');
     PLAN_STATE.year  = d.getFullYear();

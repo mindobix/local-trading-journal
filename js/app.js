@@ -41,26 +41,26 @@ function switchView(v) {
   if (typeof _bulkIsActive === 'function' && _bulkIsActive() && !_bulkConfirmLeave()) return;
   if (typeof _bulkCleanup === 'function') _bulkCleanup();
   state.view = v;
-  // Cleanup news polling when leaving news view
-  if (state.view === 'news' && v !== 'news' && typeof cleanupNewsView === 'function') cleanupNewsView();
+  // Cleanup signal-intel SSE when leaving the view
+  if (state.view === 'signal-intel' && v !== 'signal-intel' && typeof cleanupSignalIntelView === 'function') cleanupSignalIntelView();
 
-  document.getElementById('view-bulk').style.display    = 'none';
-  document.getElementById('view-cal').style.display     = v === 'calendar' ? 'block' : 'none';
-  document.getElementById('view-trades').style.display  = v === 'trades'   ? 'block' : 'none';
-  document.getElementById('view-plan').style.display    = v === 'plan'     ? 'block' : 'none';
-  document.getElementById('view-reports').style.display = v === 'reports'  ? 'block' : 'none';
-  document.getElementById('view-news').style.display    = v === 'news'     ? 'block' : 'none';
-  document.getElementById('nav-cal').classList.toggle('active',     v === 'calendar');
-  document.getElementById('nav-trades').classList.toggle('active',  v === 'trades');
-  document.getElementById('nav-plan').classList.toggle('active',    v === 'plan');
-  document.getElementById('nav-reports').classList.toggle('active', v === 'reports');
-  document.getElementById('nav-news').classList.toggle('active',    v === 'news');
+  document.getElementById('view-bulk').style.display          = 'none';
+  document.getElementById('view-cal').style.display           = v === 'calendar'     ? 'block' : 'none';
+  document.getElementById('view-trades').style.display        = v === 'trades'       ? 'block' : 'none';
+  document.getElementById('view-plan').style.display          = v === 'plan'         ? 'block' : 'none';
+  document.getElementById('view-reports').style.display       = v === 'reports'      ? 'block' : 'none';
+  document.getElementById('view-signal-intel').style.display  = v === 'signal-intel' ? 'block' : 'none';
+  document.getElementById('nav-cal').classList.toggle('active',          v === 'calendar');
+  document.getElementById('nav-trades').classList.toggle('active',       v === 'trades');
+  document.getElementById('nav-plan').classList.toggle('active',         v === 'plan');
+  document.getElementById('nav-reports').classList.toggle('active',      v === 'reports');
+  document.getElementById('nav-signal-intel').classList.toggle('active', v === 'signal-intel');
   updateFilterBarContext(v);
   if (v === 'trades') renderTrades();
   if (v === 'calendar') renderCalendar();
   if (v === 'plan')     initPlanView();
   if (v === 'reports')  initReportsView();
-  if (v === 'news' && typeof initNewsView === 'function') initNewsView();
+  if (v === 'signal-intel' && typeof initSignalIntelView === 'function') initSignalIntelView();
 }
 
 function openAddGlobal() {
@@ -270,7 +270,7 @@ function closeImportErrors() {
 
 function backupData() {
   const backup = {
-    version:    7,  // v7: adds settings (filterState, tradePageSize)
+    version:    8,  // v8: removed newsConfig/newsTaxonomy, added llmTradePlans tracking
     exportedAt: new Date().toISOString(),
     settings: {
       filterState:   (typeof _captureFilterSnapshot === 'function') ? _captureFilterSnapshot() : null,
@@ -282,8 +282,6 @@ function backupData() {
     rules:        loadRules(),
     plans:        loadPlans(),
     ideas:        loadIdeas(),
-    newsConfig:   typeof getNewsConfigForBackup   === 'function' ? getNewsConfigForBackup()   : null,
-    newsTaxonomy: typeof getTaxonomyForBackup     === 'function' ? getTaxonomyForBackup()     : null,
     llmQueries:      typeof getLlmQueriesForBackup       === 'function' ? getLlmQueriesForBackup()       : null,
     llmTradePlans:   typeof getLlmTradePlansForBackup    === 'function' ? getLlmTradePlansForBackup()    : null,
   };
@@ -338,7 +336,7 @@ function restoreData(event) {
     if (hasCurrent) {
       const msg = isLegacy
         ? 'You have existing data. Restoring a legacy backup will merge trades only. Continue?'
-        : 'You have existing data. Restoring will merge trades, tags, mistakes, rules, daily plans, and trade plan ideas. Backup entries take priority on conflicts. Continue?';
+        : 'You have existing data. Restoring will merge trades, tags, mistakes, rules, daily plans, trade plan ideas, LLM prompts, and LLM trade plans. Backup entries take priority on conflicts. Continue?';
       if (!confirm(msg)) { event.target.value = ''; return; }
     }
 
@@ -408,24 +406,15 @@ function restoreData(event) {
     await dbReplaceAll('plans', Object.entries(mergedPlans).map(([date, html]) => ({ date, html })));
     saveIdeas(mergedIdeas);
 
-    // Restore news settings (replace, not merge — they're whole config objects)
-    let restoredNewsConfig   = false;
-    let restoredNewsTaxonomy = false;
-    let restoredLlmQueries   = false;
-    if (incoming.newsConfig && typeof restoreNewsConfig === 'function') {
-      await restoreNewsConfig(incoming.newsConfig);
-      restoredNewsConfig = true;
-    }
-    if (incoming.newsTaxonomy && typeof restoreNewsTaxonomy === 'function') {
-      await restoreNewsTaxonomy(incoming.newsTaxonomy);
-      restoredNewsTaxonomy = true;
-    }
+    let restoredLlmQueries    = false;
+    let restoredLlmTradePlans = false;
     if (incoming.llmQueries && typeof restoreLlmQueries === 'function') {
       restoreLlmQueries(incoming.llmQueries);
       restoredLlmQueries = true;
     }
     if (incoming.llmTradePlans && typeof restoreLlmTradePlansFromBackup === 'function') {
       restoreLlmTradePlansFromBackup(incoming.llmTradePlans);
+      restoredLlmTradePlans = true;
     }
 
     // Restore settings (tradePageSize, filterState)
@@ -462,9 +451,8 @@ function restoreData(event) {
     if (updatedPlans  > 0) parts.push(`${updatedPlans} daily plan${updatedPlans !== 1 ? 's' : ''} updated`);
     if (addedIdeas    > 0) parts.push(`${addedIdeas} trade plan idea${addedIdeas !== 1 ? 's' : ''} added`);
     if (updatedIdeas  > 0) parts.push(`${updatedIdeas} trade plan idea${updatedIdeas !== 1 ? 's' : ''} updated`);
-    if (restoredNewsConfig)   parts.push('news sources restored');
-    if (restoredNewsTaxonomy) parts.push('signal taxonomy restored');
-    if (restoredLlmQueries)   parts.push('LLM queries restored');
+    if (restoredLlmQueries)    parts.push('LLM prompts restored');
+    if (restoredLlmTradePlans) parts.push('LLM trade plans restored');
     if (parts.length === 0) parts.push('nothing new');
 
     showImportSuccess(parts.join(', ') + ' restored.');
@@ -517,7 +505,7 @@ document.addEventListener('keydown', e => {
     await _initWotpStorage();
     await _initPlansStorage();
     await _initLlmTradePlansStorage();
-    await _initNewsStorage();
+    await _initLlmStorage();
     await _initCalendarMonth();
 
     // Restore persisted settings

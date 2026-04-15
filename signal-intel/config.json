@@ -1,0 +1,255 @@
+{
+  "_comment": "Edit watchlist to match your positions/watchlist. Sources mirror the trading journal.",
+  "watchlist": [
+    "TSLA",
+    "MU",
+    "META",
+    "NVDA",
+    "SNDK",
+    "MSFT",
+    "AMZN",
+    "DELL",
+    "AVGO",
+    "GOOG",
+    "NBIS",
+    "CRWV"
+  ],
+  "signalConfidenceThreshold": 0.55,
+  "crawlIntervalMinutes": 5,
+  "maxArticlesPerSource": 20,
+  "sources": [
+    {
+      "id": "yf-tsla",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "TSLA",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=TSLA&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-tsla",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "TSLA",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=TSLA"
+    },
+    {
+      "id": "yf-mu",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "MU",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=MU&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-mu",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "MU",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=MU"
+    },
+    {
+      "id": "yf-meta",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "META",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=META&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-meta",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "META",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=META"
+    },
+    {
+      "id": "yf-nvda",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "NVDA",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NVDA&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-nvda",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "NVDA",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=NVDA"
+    },
+    {
+      "id": "yf-spy",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "MARKET",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=SPY&region=US&lang=en-US"
+    },
+    {
+      "id": "yf-qqq",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "MARKET",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=QQQ&region=US&lang=en-US"
+    },
+    {
+      "id": "mkt-cnbc",
+      "name": "CNBC Tech",
+      "type": "rss",
+      "symbol": "MARKET",
+      "enabled": true,
+      "url": "https://www.cnbc.com/id/19854910/device/rss/rss.html"
+    },
+    {
+      "id": "mkt-mw",
+      "name": "MarketWatch Pulse",
+      "type": "rss",
+      "symbol": "MARKET",
+      "enabled": true,
+      "url": "https://feeds.marketwatch.com/marketwatch/marketpulse/"
+    },
+    {
+      "id": "mkt-sa",
+      "name": "Seeking Alpha",
+      "type": "rss",
+      "symbol": "MARKET",
+      "enabled": true,
+      "url": "https://seekingalpha.com/market_currents.xml"
+    },
+    {
+      "id": "yf-sndk",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "SNDK",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=SNDK&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-sndk",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "SNDK",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=SNDK"
+    },
+    {
+      "id": "yf-msft",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "MSFT",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=MSFT&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-msft",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "MSFT",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=MSFT"
+    },
+    {
+      "id": "yf-amzn",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "AMZN",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AMZN&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-amzn",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "AMZN",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=AMZN"
+    },
+    {
+      "id": "yf-dell",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "DELL",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=DELL&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-dell",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "DELL",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=DELL"
+    },
+    {
+      "id": "yf-avgo",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "AVGO",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AVGO&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-avgo",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "AVGO",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=AVGO"
+    },
+    {
+      "id": "yf-goog",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "GOOG",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=GOOG&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-goog",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "GOOG",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=GOOG"
+    },
+    {
+      "id": "yf-nbis",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "NBIS",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=NBIS&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-nbis",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "NBIS",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=NBIS"
+    },
+    {
+      "id": "yf-crwv",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "CRWV",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=CRWV&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-crwv",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "CRWV",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=CRWV"
+    }
+  ],
+  "analystModel": "llama3.2:latest"
+}

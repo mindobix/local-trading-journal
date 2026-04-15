@@ -38,6 +38,12 @@
 }
 .plan-view-btn:hover  { color: var(--text); }
 .plan-view-btn.active { background: var(--surface3); color: var(--text); box-shadow: 0 1px 4px rgba(0,0,0,0.25); }
+.plan-llm-tab { margin-left: 6px; border-left: 1px solid var(--border) !important; padding-left: 14px; color: var(--text-muted); }
+.plan-llm-tab:hover { color: var(--accent); }
+.plan-llm-tab.active { background: var(--accent-dim); color: var(--accent); box-shadow: none; }
+
+/* LLM Trades Prompts panel — fills view like news-body */
+#plan-llm-wrap { flex: 1; overflow: hidden; }
 
 /* ── Plan navigation controls ── */
 .plan-nav-controls {
@@ -589,8 +595,61 @@
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
   flex-shrink: 0;
+}
+.idea-modal .modal-title { flex: 1; }
+
+/* JSON paste button */
+.idea-json-btn {
+  padding: 4px 10px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text-muted);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  letter-spacing: 0.03em;
+}
+.idea-json-btn:hover { border-color: var(--accent); color: var(--accent); }
+.idea-json-btn.active { background: var(--accent-dim); border-color: rgba(99,102,241,0.5); color: var(--accent); }
+
+/* JSON paste panel */
+.idea-json-panel {
+  display: none;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 20px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+.idea-json-panel.open { display: flex; }
+.idea-json-ta {
+  width: 100%;
+  min-height: 100px;
+  max-height: 200px;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  padding: 8px 10px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.idea-json-ta:focus { border-color: var(--accent); }
+.idea-json-ta::placeholder { color: var(--text-dim); }
+.idea-json-err {
+  font-size: 11px;
+  color: var(--red);
+  min-height: 14px;
 }
 .idea-modal .modal-body {
   padding: 16px 20px;

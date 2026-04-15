@@ -19,7 +19,7 @@
     <button class="nav-btn" id="nav-trades" onclick="switchView('trades')">Trades</button>
     <button class="nav-btn" id="nav-plan" onclick="switchView('plan')">Trade Plan</button>
     <button class="nav-btn" id="nav-reports" onclick="switchView('reports')">Reports</button>
-    <button class="nav-btn" id="nav-news"    onclick="switchView('news')">Signal News</button>
+    <button class="nav-btn" id="nav-signal-intel" onclick="switchView('signal-intel')">⚡ Signal Intel</button>
   </nav>
   <div class="header-spacer"></div>
   <div class="util-dropdown" id="util-dropdown">
@@ -175,6 +175,7 @@
         <button class="plan-view-btn" data-view="monthly">Monthly</button>
         <button class="plan-view-btn" data-view="weekly">Weekly</button>
         <button class="plan-view-btn active" data-view="daily">Daily</button>
+        <button class="plan-view-btn plan-llm-tab" data-view="llm">🤖 LLM Trades Prompts</button>
       </div>
       <div class="plan-nav-controls" id="plan-nav-controls">
         <button class="plan-nav-arrow" id="plan-nav-prev">&#8249;</button>
@@ -187,9 +188,12 @@
     </div>
 
     <!-- Main content (rendered by plan.js) -->
-    <div class="plan-main-wrap">
+    <div class="plan-main-wrap" id="plan-main-wrap">
       <div id="plan-main-content"></div>
     </div>
+
+    <!-- LLM Trades Prompts panel (rendered by llm-prompts.js) -->
+    <div id="plan-llm-wrap" style="display:none"></div>
 
   </div>
 
@@ -237,8 +241,115 @@
     </div>
   </div>
 
-  <!-- Market News View -->
-  <div id="view-news" style="display:none"></div>
+  <!-- Signal Intel View -->
+  <div id="view-signal-intel" style="display:none">
+    <!-- Loading bar -->
+    <div class="si-loading-bar" id="si-loadingBar" style="display:none"></div>
+
+    <!-- Top bar -->
+    <div class="si-topbar">
+      <div class="si-topbar-inner">
+        <div class="si-logo">
+          <span class="si-logo-pulse"></span>
+          ⚡ Signal Intel
+          <span class="si-new-badge" id="si-newCount" style="display:none"></span>
+        </div>
+        <div class="si-spacer"></div>
+        <div class="si-status-pill">
+          <span class="si-status-dot" id="si-statusIndicator"></span>
+          <span class="si-status-label" id="si-statusLabel">Ready</span>
+        </div>
+        <button class="si-crawl-btn" id="si-crawlBtn" onclick="si_triggerCrawl()">↻ Crawl Now</button>
+        <button class="si-crawl-btn" style="border-color:var(--border);color:var(--text-muted);background:transparent" onclick="si_openWatchlist()">⚙ Watchlist</button>
+      </div>
+    </div>
+
+    <!-- Offline banner -->
+    <div class="si-offline-banner" id="si-offline-banner" style="display:none">
+      ⚠ Signal Intel server is offline —
+      start it: <code>cd signal-intel &amp;&amp; ./start.sh</code>
+    </div>
+
+    <!-- Stats row -->
+    <div class="si-statsrow">
+      <div class="si-statsrow-inner">
+        <div class="si-stat-cell">
+          <span class="si-stat-num" id="si-statTotal">—</span>
+          <span class="si-stat-lbl">signals (24h)</span>
+        </div>
+        <div class="si-stat-cell">
+          <span class="si-stat-num green" id="si-statBullish">—</span>
+          <span class="si-stat-lbl">bullish</span>
+        </div>
+        <div class="si-stat-cell">
+          <span class="si-stat-num red" id="si-statBearish">—</span>
+          <span class="si-stat-lbl">bearish</span>
+        </div>
+        <div class="si-stat-cell">
+          <span class="si-stat-num orange" id="si-statActNow">—</span>
+          <span class="si-stat-lbl">act-now</span>
+        </div>
+        <div class="si-stat-cell">
+          <span class="si-stat-num blue" id="si-statAvgConf">—</span>
+          <span class="si-stat-lbl">avg confidence</span>
+        </div>
+        <div class="si-stat-cell si-model-cell">
+          <span class="si-model-label">Model</span>
+          <select id="si-modelSelect" class="si-model-select" onchange="si_changeModel(this.value)"></select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toolbar (filter chips + last crawl) -->
+    <div class="si-toolbar">
+      <button class="si-chip active" data-filter="all"     onclick="si_setFilter('all',this)">All</button>
+      <button class="si-chip bull"   data-filter="bullish" onclick="si_setFilter('bullish',this)">▲ Bullish</button>
+      <button class="si-chip bear"   data-filter="bearish" onclick="si_setFilter('bearish',this)">▼ Bearish</button>
+      <button class="si-chip"        data-filter="mixed"   onclick="si_setFilter('mixed',this)">◆ Mixed</button>
+      <button class="si-chip act-now" data-filter="act_now" onclick="si_setFilter('act_now',this)">🔥 Act Now</button>
+      <div class="si-sep"></div>
+      <div class="si-toolbar-right">
+        <span class="si-last-crawl" id="si-lastCrawl">—</span>
+      </div>
+    </div>
+
+    <!-- Ticker filter bar -->
+    <div class="si-ticker-bar">
+      <div class="si-ticker-bar-inner">
+        <span class="si-tbar-label">Tickers</span>
+        <div class="si-ticker-chips" id="si-tickerChips"></div>
+        <button class="si-clear-tickers" id="si-clearTickersBtn" style="display:none" onclick="si_clearTickers()">× clear</button>
+      </div>
+    </div>
+
+    <!-- Section title + grid -->
+    <div class="si-main">
+      <div class="si-section-header">
+        <span class="si-section-title" id="si-sectionTitle"></span>
+        <div class="si-section-line"></div>
+      </div>
+      <div class="si-grid" id="si-grid">
+        <div class="si-empty">
+          <div class="si-empty-icon">⚡</div>
+          <div class="si-empty-title">No signals yet</div>
+          <div class="si-empty-sub">Hit <strong>↻ Crawl Now</strong> to fetch the latest news and run AI analysis.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Watchlist modal (class-toggled: .open on #si-watchlistModal) -->
+    <div class="si-modal-backdrop" id="si-watchlistModal" onclick="si_closeWatchlist(event)">
+      <div class="si-modal">
+        <h3>⚙ Watchlist</h3>
+        <p>Enter tickers separated by commas or newlines.<br>RSS feeds are auto-added for new tickers.</p>
+        <textarea id="si-watchlistInput" class="si-modal-input" rows="8" placeholder="TSLA&#10;NVDA&#10;AAPL"></textarea>
+        <div class="si-modal-footer">
+          <button class="si-modal-cancel" onclick="si_closeWatchlist()">Cancel</button>
+          <button class="si-modal-save" onclick="si_saveWatchlist()">Save</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
 
   <!-- Trades View -->
@@ -545,7 +656,12 @@
 <div class="idea-modal" id="idea-modal">
   <div class="modal-hdr">
     <span class="modal-title" id="idea-modal-title">Add Trade Plan</span>
+    <button class="idea-json-btn" id="idea-json-toggle" onclick="toggleIdeaJsonPanel()" title="Paste Trade Plan JSON">&#123;&#125; JSON</button>
     <button class="modal-close" id="idea-modal-close">&#10005;</button>
+  </div>
+  <div class="idea-json-panel" id="idea-json-panel">
+    <textarea class="idea-json-ta" id="idea-json-ta" placeholder="Paste Trade Plan JSON here — fields will populate automatically…" spellcheck="false"></textarea>
+    <div class="idea-json-err" id="idea-json-err"></div>
   </div>
   <div class="modal-body">
 
@@ -679,7 +795,8 @@
 <script src="js/modal.js"></script>
 <script src="js/reports.js"></script>
 <script src="js/bulk.js"></script>
-<script src="js/news.js"></script>
+<script src="js/llm-prompts.js"></script>
+<script src="js/signal-intel.js"></script>
 <script src="js/llm-trade-plan.js"></script>
 <script src="js/app.js"></script>
 </body>

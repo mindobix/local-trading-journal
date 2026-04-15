@@ -14,6 +14,6 @@
 @import url('trade-plan.css');        /* Trade plan (monthly/weekly/daily)     */
 @import url('targets.css');           /* Profit targets, stop loss, R-multiple */
 @import url('bulk-entry.css');        /* Bulk trade entry spreadsheet view     */
-@import url('news.css');              /* Signal news tab                       */
-@import url('llm.css');               /* LLM news tab                          */
+@import url('llm.css');               /* LLM Trades Prompts panel              */
 @import url('llm-trade-plan.css');    /* LLM Trade Plan tab                    */
+@import url('signal-intel.css');      /* Signal Intel tab                      */
