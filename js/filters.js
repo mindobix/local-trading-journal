@@ -243,13 +243,13 @@ function updateGfMultiLabel(type) {
 function updateFilterBarContext(view) {
   if (view === 'calendar' || view === 'trades') filterView = view;
 
-  const isPlan    = view === 'plan';
-  const isReports = view === 'reports';
-  const isNews    = view === 'news';
+  const isPlan        = view === 'plan';
+  const isReports     = view === 'reports';
+  const isNews        = view === 'news';
   const isSignalIntel = view === 'signal-intel';
-  const hideChrome = isPlan || isReports || isNews || isSignalIntel;
+  const hideChrome    = isPlan || isNews || isSignalIntel;
 
-  // Hide entire stats bar and filter bar on Trade Plan and Reports
+  // Hide stats bar and filter bar on Trade Plan, Signal News, Signal Intel
   const statsBar  = document.getElementById('stats-bar');
   const filterBar = document.getElementById('global-filter-bar');
   if (statsBar)  statsBar.style.display  = hideChrome ? 'none' : '';
@@ -259,7 +259,7 @@ function updateFilterBarContext(view) {
   const tagsWrap     = document.getElementById('gf-tags-wrap');
   const rulesWrap    = document.getElementById('gf-rules-wrap');
   const mistakesWrap = document.getElementById('gf-mistakes-wrap');
-  if (sideEl)       sideEl.style.display       = view === 'trades' ? '' : 'none';
+  if (sideEl)       sideEl.style.display       = (view === 'trades' || isReports) ? '' : 'none';
   if (tagsWrap)     tagsWrap.style.display      = isPlan ? 'none' : '';
   if (rulesWrap)    rulesWrap.style.display     = isPlan ? 'none' : '';
   if (mistakesWrap) mistakesWrap.style.display  = isPlan ? 'none' : '';
@@ -274,7 +274,7 @@ function renderActiveFilters() {
   if (!bar || !chips) return;
 
   const view = (typeof state !== 'undefined') ? state.view : 'calendar';
-  if (view === 'plan' || view === 'reports') { bar.style.display = 'none'; return; }
+  if (view === 'plan') { bar.style.display = 'none'; return; }
 
   const srch  = document.getElementById('gf-srch')?.value  || '';
   const fType = document.getElementById('gf-type')?.value  || '';

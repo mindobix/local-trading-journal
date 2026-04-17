@@ -12,7 +12,8 @@
     "AVGO",
     "GOOG",
     "NBIS",
-    "CRWV"
+    "CRWV",
+    "COIN"
   ],
   "signalConfidenceThreshold": 0.55,
   "crawlIntervalMinutes": 5,
@@ -249,6 +250,22 @@
       "symbol": "CRWV",
       "enabled": true,
       "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=CRWV"
+    },
+    {
+      "id": "yf-coin",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "COIN",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=COIN&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-coin",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "COIN",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=COIN"
     }
   ],
   "analystModel": "llama3.2:latest"
