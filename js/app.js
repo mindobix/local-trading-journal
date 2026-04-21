@@ -422,8 +422,12 @@ function restoreData(event) {
       restoreLlmTradePlansFromBackup(incoming.llmTradePlans);
       restoredLlmTradePlans = true;
     }
+    let restoredBankingEntries = 0;
     if (incoming.banking && typeof restoreBankingFromBackup === 'function') {
+      const bkBefore = typeof getBankingDataForBackup === 'function' ? getBankingDataForBackup().entries.length : 0;
       await restoreBankingFromBackup(incoming.banking);
+      const bkAfter  = typeof getBankingDataForBackup === 'function' ? getBankingDataForBackup().entries.length : 0;
+      restoredBankingEntries = bkAfter - bkBefore;
     }
 
     // Restore settings (tradePageSize, filterState)
@@ -460,8 +464,9 @@ function restoreData(event) {
     if (updatedPlans  > 0) parts.push(`${updatedPlans} daily plan${updatedPlans !== 1 ? 's' : ''} updated`);
     if (addedIdeas    > 0) parts.push(`${addedIdeas} trade plan idea${addedIdeas !== 1 ? 's' : ''} added`);
     if (updatedIdeas  > 0) parts.push(`${updatedIdeas} trade plan idea${updatedIdeas !== 1 ? 's' : ''} updated`);
-    if (restoredLlmQueries)    parts.push('LLM prompts restored');
-    if (restoredLlmTradePlans) parts.push('LLM trade plans restored');
+    if (restoredLlmQueries)       parts.push('LLM prompts restored');
+    if (restoredLlmTradePlans)    parts.push('LLM trade plans restored');
+    if (restoredBankingEntries > 0) parts.push(`${restoredBankingEntries} banking entr${restoredBankingEntries !== 1 ? 'ies' : 'y'} added`);
     if (parts.length === 0) parts.push('nothing new');
 
     showImportSuccess(parts.join(', ') + ' restored.');
