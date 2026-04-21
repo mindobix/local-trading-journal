@@ -13,5 +13,5 @@ async function _initWotpStorage() {
 function loadIdeas()        { return _ideas; }
 function saveIdeas(ideas)   {
   _ideas = ideas;
-  dbReplaceAll('ideas', ideas).catch(console.error);
+  return dbReplaceAll('ideas', ideas).catch(console.error);
 }

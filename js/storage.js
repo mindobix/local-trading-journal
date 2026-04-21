@@ -31,26 +31,26 @@ function uid() {
 function load()         { return _trades; }
 function save(trades)   {
   _trades = trades;
-  dbReplaceAll('trades', trades).catch(console.error);
+  return dbReplaceAll('trades', trades).catch(console.error);
 }
 
 // ── Rules ─────────────────────────────────────────────────────────────
 function loadRules()        { return _rules; }
 function saveRules(rules)   {
   _rules = rules;
-  dbReplaceAll('rules', rules).catch(console.error);
+  return dbReplaceAll('rules', rules).catch(console.error);
 }
 
 // ── Tags ──────────────────────────────────────────────────────────────
 function loadTags()       { return _tags; }
 function saveTags(tags)   {
   _tags = tags;
-  dbReplaceAll('tags', tags).catch(console.error);
+  return dbReplaceAll('tags', tags).catch(console.error);
 }
 
 // ── Mistakes ──────────────────────────────────────────────────────────
 function loadMistakes()           { return _mistakes; }
 function saveMistakes(mistakes)   {
   _mistakes = mistakes;
-  dbReplaceAll('mistakes', mistakes).catch(console.error);
+  return dbReplaceAll('mistakes', mistakes).catch(console.error);
 }

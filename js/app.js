@@ -49,17 +49,20 @@ function switchView(v) {
   document.getElementById('view-trades').style.display        = v === 'trades'       ? 'block' : 'none';
   document.getElementById('view-plan').style.display          = v === 'plan'         ? 'block' : 'none';
   document.getElementById('view-reports').style.display       = v === 'reports'      ? 'block' : 'none';
+  document.getElementById('view-banking').style.display       = v === 'banking'      ? 'block' : 'none';
   document.getElementById('view-signal-intel').style.display  = v === 'signal-intel' ? 'block' : 'none';
   document.getElementById('nav-cal').classList.toggle('active',          v === 'calendar');
   document.getElementById('nav-trades').classList.toggle('active',       v === 'trades');
   document.getElementById('nav-plan').classList.toggle('active',         v === 'plan');
   document.getElementById('nav-reports').classList.toggle('active',      v === 'reports');
+  document.getElementById('nav-banking').classList.toggle('active',      v === 'banking');
   document.getElementById('nav-signal-intel').classList.toggle('active', v === 'signal-intel');
   updateFilterBarContext(v);
   if (v === 'trades') renderTrades();
   if (v === 'calendar') renderCalendar();
   if (v === 'plan')     initPlanView();
   if (v === 'reports')  initReportsView();
+  if (v === 'banking')      renderBankingView();
   if (v === 'signal-intel' && typeof initSignalIntelView === 'function') initSignalIntelView();
 }
 
@@ -284,6 +287,7 @@ function backupData() {
     ideas:        loadIdeas(),
     llmQueries:      typeof getLlmQueriesForBackup       === 'function' ? getLlmQueriesForBackup()       : null,
     llmTradePlans:   typeof getLlmTradePlansForBackup    === 'function' ? getLlmTradePlansForBackup()    : null,
+    banking:         typeof getBankingDataForBackup      === 'function' ? getBankingDataForBackup()      : null,
   };
   const json  = JSON.stringify(backup, null, 2);
   const blob  = new Blob([json], { type: 'application/json' });
@@ -301,6 +305,7 @@ function restoreData(event) {
   if (!file) return;
   const reader = new FileReader();
   reader.onload = async e => {
+    try {
     let raw;
     try {
       raw = JSON.parse(e.target.result);
@@ -397,14 +402,15 @@ function restoreData(event) {
     const addedIdeas  = (incoming.ideas || []).length - updatedIdeas;
     const mergedIdeas = [...existingIdeaMap.values()];
 
-    save(mergedTrades);
-    saveTags(mergedTags);
-    saveMistakes(mergedMistakes);
-    saveRules(mergedRules);
-    // Persist merged plans to in-memory cache + IndexedDB
+    // Await sequentially to avoid concurrent readwrite transaction contention
+    await save(mergedTrades);
+    await saveTags(mergedTags);
+    await saveMistakes(mergedMistakes);
+    await saveRules(mergedRules);
+    await saveIdeas(mergedIdeas);
+    // Plans need their in-memory cache updated first
     _plans = mergedPlans;
     await dbReplaceAll('plans', Object.entries(mergedPlans).map(([date, html]) => ({ date, html })));
-    saveIdeas(mergedIdeas);
 
     let restoredLlmQueries    = false;
     let restoredLlmTradePlans = false;
@@ -415,6 +421,9 @@ function restoreData(event) {
     if (incoming.llmTradePlans && typeof restoreLlmTradePlansFromBackup === 'function') {
       restoreLlmTradePlansFromBackup(incoming.llmTradePlans);
       restoredLlmTradePlans = true;
+    }
+    if (incoming.banking && typeof restoreBankingFromBackup === 'function') {
+      await restoreBankingFromBackup(incoming.banking);
     }
 
     // Restore settings (tradePageSize, filterState)
@@ -456,6 +465,11 @@ function restoreData(event) {
     if (parts.length === 0) parts.push('nothing new');
 
     showImportSuccess(parts.join(', ') + ' restored.');
+    } catch (err) {
+      console.error('[TJ] Restore failed:', err);
+      alert('Restore failed: ' + (err.message || String(err)));
+      event.target.value = '';
+    }
   };
   reader.readAsText(file);
 }
@@ -506,6 +520,7 @@ document.addEventListener('keydown', e => {
     await _initPlansStorage();
     await _initLlmTradePlansStorage();
     await _initLlmStorage();
+    await _initBankingStorage();
     await _initCalendarMonth();
 
     // Restore persisted settings

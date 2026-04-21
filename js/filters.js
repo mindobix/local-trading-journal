@@ -247,7 +247,7 @@ function updateFilterBarContext(view) {
   const isReports     = view === 'reports';
   const isNews        = view === 'news';
   const isSignalIntel = view === 'signal-intel';
-  const hideChrome    = isPlan || isNews || isSignalIntel;
+  const hideChrome    = isPlan || isNews || isSignalIntel || view === 'banking';
 
   // Hide stats bar and filter bar on Trade Plan, Signal News, Signal Intel
   const statsBar  = document.getElementById('stats-bar');

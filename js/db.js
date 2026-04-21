@@ -1,50 +1,61 @@
 /* ── db.js ── IndexedDB core layer ────────────────────────────────────
  *
- * Database: trading-journal-db  (version 1)
+ * Database: trading-journal-db  (version 4)
  * Object stores:
- *   trades        keyPath: 'id'
- *   tags          keyPath: 'id'
- *   mistakes      keyPath: 'id'
- *   rules         keyPath: 'id'
- *   ideas         keyPath: 'id'
- *   llmTradePlans keyPath: 'id'
- *   llmQueries    keyPath: 'id'
- *   plans         keyPath: 'date'   { date:'YYYY-MM-DD', html:'...' }
- *   settings      keyPath: 'key'    { key:'...', value:... }
+ *   trades           keyPath: 'id'
+ *   tags             keyPath: 'id'
+ *   mistakes         keyPath: 'id'
+ *   rules            keyPath: 'id'
+ *   ideas            keyPath: 'id'
+ *   llmTradePlans    keyPath: 'id'
+ *   llmQueries       keyPath: 'id'
+ *   bankingAccounts  keyPath: 'id'
+ *   bankingEntries   keyPath: 'id'
+ *   plans            keyPath: 'date'   { date:'YYYY-MM-DD', html:'...' }
+ *   settings         keyPath: 'key'    { key:'...', value:... }
  *
  * All functions are async and return Promises.
  * ───────────────────────────────────────────────────────────────────── */
 
 const TJ_DB_NAME    = 'trading-journal-db';
-const TJ_DB_VERSION = 1;
+const TJ_DB_VERSION = 4;
 
 let _tjIdb = null;
 
 function _openTjDb() {
   if (_tjIdb) return Promise.resolve(_tjIdb);
   return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (fn, val) => { if (!settled) { settled = true; clearTimeout(timer); fn(val); } };
+
+    // Safety net: if the open request hangs (stuck upgrade lock), delete and retry once
+    const timer = setTimeout(async () => {
+      console.warn('[TJ] DB open timed out — deleting stuck DB and retrying');
+      try {
+        await new Promise((res, rej) => {
+          const del = indexedDB.deleteDatabase(TJ_DB_NAME);
+          del.onsuccess = res;
+          del.onerror   = () => rej(del.error);
+        });
+        _tjIdb = null;
+        _openTjDb().then(resolve, reject);
+      } catch (e) { reject(e); }
+    }, 4000);
+
     const req = indexedDB.open(TJ_DB_NAME, TJ_DB_VERSION);
+    req.onblocked = () => console.warn('[TJ] DB open blocked by another connection');
 
     req.onupgradeneeded = e => {
       const db = e.target.result;
-      // Stores with keyPath 'id'
-      for (const name of ['trades','tags','mistakes','rules','ideas','llmTradePlans','llmQueries']) {
-        if (!db.objectStoreNames.contains(name)) {
-          db.createObjectStore(name, { keyPath: 'id' });
-        }
+      for (const name of ['trades','tags','mistakes','rules','ideas','llmTradePlans','llmQueries','bankingAccounts','bankingEntries']) {
+        if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
       }
-      // Plans store uses 'date' as key
-      if (!db.objectStoreNames.contains('plans')) {
-        db.createObjectStore('plans', { keyPath: 'date' });
-      }
-      // Generic settings / UI state store
-      if (!db.objectStoreNames.contains('settings')) {
-        db.createObjectStore('settings', { keyPath: 'key' });
-      }
+      if (!db.objectStoreNames.contains('plans'))    db.createObjectStore('plans',    { keyPath: 'date' });
+      if (!db.objectStoreNames.contains('settings')) db.createObjectStore('settings', { keyPath: 'key'  });
     };
 
-    req.onsuccess = e => { _tjIdb = e.target.result; resolve(_tjIdb); };
-    req.onerror   = e => reject(e.target.error);
+    req.onsuccess = e => { _tjIdb = e.target.result; done(resolve, _tjIdb); };
+    req.onerror   = e => done(reject, e.target.error);
   });
 }
 
@@ -97,12 +108,19 @@ async function dbDelete(storeName, key) {
 async function dbReplaceAll(storeName, records) {
   const db = await _openTjDb();
   return new Promise((resolve, reject) => {
-    const tx    = db.transaction(storeName, 'readwrite');
+    let tx;
+    try {
+      tx = db.transaction(storeName, 'readwrite');
+    } catch (e) {
+      reject(e);
+      return;
+    }
     const store = tx.objectStore(storeName);
     store.clear();
     for (const r of records) store.put(r);
     tx.oncomplete = () => resolve();
     tx.onerror    = () => reject(tx.error);
+    tx.onabort    = () => reject(tx.error || new Error(`Transaction aborted on store "${storeName}"`));
   });
 }
 

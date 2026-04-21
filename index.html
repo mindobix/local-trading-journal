@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LocalTradeJournal</title>
   <link rel="stylesheet" href="css/styles.css">
+  <link rel="stylesheet" href="css/banking.css">
 </head>
 <body>
 
@@ -19,6 +20,7 @@
     <button class="nav-btn" id="nav-trades" onclick="switchView('trades')">Trades</button>
     <button class="nav-btn" id="nav-plan" onclick="switchView('plan')">Trade Plan</button>
     <button class="nav-btn" id="nav-reports" onclick="switchView('reports')">Reports</button>
+    <button class="nav-btn" id="nav-banking" onclick="switchView('banking')">🏦 Banking</button>
     <button class="nav-btn" id="nav-signal-intel" onclick="switchView('signal-intel')">⚡ Signal Intel</button>
   </nav>
   <div class="header-spacer"></div>
@@ -238,6 +240,30 @@
         </div>
         <div id="reports-content"></div>
       </div>
+    </div>
+  </div>
+
+  <!-- Banking View -->
+  <div id="view-banking" style="display:none">
+    <div class="banking-topbar">
+      <span class="banking-title">🏦 Banking</span>
+      <span class="banking-subtitle">Track transfers between bank and brokerage accounts</span>
+      <button class="bk-manage-btn" onclick="openBankingAccountsModal()">⚙ Accounts</button>
+    </div>
+    <div class="banking-body">
+      <div class="banking-content" id="banking-content"></div>
+      <div class="banking-pivot" id="banking-pivot"></div>
+    </div>
+  </div>
+
+  <!-- Banking Accounts Modal -->
+  <div class="bk-modal-backdrop" id="bk-accounts-modal" onclick="closeBankingAccountsModal(event)">
+    <div class="bk-modal">
+      <div class="bk-modal-header">
+        <span class="bk-modal-title">Manage Accounts</span>
+        <button class="bk-modal-close" onclick="document.getElementById('bk-accounts-modal').classList.remove('open')">✕</button>
+      </div>
+      <div class="bk-modal-body" id="bk-accounts-modal-body"></div>
     </div>
   </div>
 
@@ -796,6 +822,7 @@
 <script src="js/reports.js"></script>
 <script src="js/bulk.js"></script>
 <script src="js/llm-prompts.js"></script>
+<script src="js/banking.js"></script>
 <script src="js/signal-intel.js"></script>
 <script src="js/llm-trade-plan.js"></script>
 <script src="js/app.js"></script>
