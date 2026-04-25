@@ -9,8 +9,20 @@
 require('dotenv').config();
 const axios = require('axios');
 
-const OLLAMA_BASE = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const MAX_ARTS    = 8;
+const OLLAMA_BASE  = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const MAX_ARTS     = 5;
+const DESC_SLICE   = 150;
+const REQ_TIMEOUT  = 180_000;
+const CONCURRENCY  = 3;
+
+// Repair common llama JSON quirks before parsing.
+function _sanitizeJson(text) {
+  return text
+    .replace(/:\s*NULL\b/g,  ': null')
+    .replace(/:\s*True\b/g,  ': true')
+    .replace(/:\s*False\b/g, ': false')
+    .replace(/,(\s*[}\]])/g, '$1');   // trailing commas
+}
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 const SYSTEM_PROMPT = `You are a professional equity analyst specializing in actionable trading signals.
@@ -67,7 +79,7 @@ async function analyzeArticles(ticker, articles, model = 'llama3.2') {
 
   const articleContext = topArticles
     .map((a, i) => {
-      const desc = a.description ? `\n   ${a.description.slice(0, 250)}` : '';
+      const desc = a.description ? `\n   ${a.description.slice(0, DESC_SLICE)}` : '';
       return `[${i + 1}] ${a.title}${desc}`;
     })
     .join('\n\n');
@@ -79,36 +91,51 @@ ${articleContext}
 
 Extract the trading signal for $${ticker}. Respond with JSON only.`;
 
-  try {
+  const callOllama = async (extraSystemNote = '') => {
+    const sys = extraSystemNote ? `${SYSTEM_PROMPT}\n\n${extraSystemNote}` : SYSTEM_PROMPT;
     const response = await axios.post(
       `${OLLAMA_BASE}/api/chat`,
       {
         model:  model,
         stream: false,
         messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user',   content: userMessage   },
+          { role: 'system', content: sys         },
+          { role: 'user',   content: userMessage },
         ],
         options: {
-          temperature: 0.1,   // low temp for deterministic JSON output
+          temperature: 0.1,
           num_predict: 900,
         },
       },
-      { timeout: 120_000 }
+      { timeout: REQ_TIMEOUT }
     );
+    return response.data?.message?.content?.trim() || '';
+  };
 
-    const rawText = response.data?.message?.content?.trim();
-    if (!rawText) return null;
-
-    // Strip markdown code fences if model adds them despite instructions
-    const jsonText = rawText
+  const parseSignal = (rawText) => {
+    const stripped = rawText
       .replace(/^```(?:json)?\s*/i, '')
       .replace(/\s*```$/i, '')
       .trim();
+    return JSON.parse(_sanitizeJson(stripped));
+  };
 
-    const signal = JSON.parse(jsonText);
+  try {
+    let signal;
+    try {
+      const rawText = await callOllama();
+      if (!rawText) return null;
+      signal = parseSignal(rawText);
+    } catch (parseErr) {
+      if (!(parseErr instanceof SyntaxError)) throw parseErr;
+      // One retry with a tighter prompt — common llama failure mode
+      const rawText = await callOllama(
+        'Your previous response had invalid JSON. Return ONLY valid JSON. Use lowercase null, true, false. No trailing commas. No NULL/True/False keywords.'
+      );
+      if (!rawText) return null;
+      signal = parseSignal(rawText);
+    }
 
-    // Normalize
     signal.ticker        = ticker.toUpperCase();
     signal.model_used    = model;
     signal.article_count = topArticles.length;
@@ -130,11 +157,19 @@ Extract the trading signal for $${ticker}. Respond with JSON only.`;
 
 async function analyzeAllTickers(articlesByTicker, model = 'llama3.2') {
   const results = {};
+  const queue   = Object.entries(articlesByTicker).filter(([, arts]) => arts.length > 0);
+  let cursor    = 0;
 
-  for (const [ticker, articles] of Object.entries(articlesByTicker)) {
-    if (articles.length === 0) continue;
-    results[ticker] = await analyzeArticles(ticker, articles, model);
+  async function worker() {
+    while (cursor < queue.length) {
+      const idx = cursor++;
+      const [ticker, articles] = queue[idx];
+      results[ticker] = await analyzeArticles(ticker, articles, model);
+    }
   }
+
+  const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, () => worker());
+  await Promise.all(workers);
 
   return results;
 }
