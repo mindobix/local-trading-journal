@@ -421,7 +421,28 @@
       <span class="bulk-count-label" id="bulk-count-label"></span>
     </div>
     <div class="bulk-topbar-actions">
-      <button class="bulk-act-btn bulk-tz-toggle-btn" id="bulk-tz-toggle-btn" onclick="toggleTradezellaPanel()" title="Import Tradezella CSV export">&#128229; Tradezella CSV Import</button>
+      <div class="bulk-import-dropdown" id="bulk-import-dropdown">
+        <button class="bulk-act-btn bulk-import-toggle-btn" id="bulk-import-toggle-btn" onclick="toggleBulkImportDropdown(event)" title="Import trades from CSV">
+          &#128229; CSV Import
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-left:3px" class="bulk-import-chevron"><polyline points="6 9 12 15 18 9"/></svg>
+        </button>
+        <div class="bulk-import-menu" id="bulk-import-menu">
+          <button class="bulk-import-item" onclick="openImportPanel('tradezella')">
+            <span class="bii-icon">&#128202;</span>
+            <div class="bii-content">
+              <div class="bii-label">Tradezella CSV Import</div>
+              <div class="bii-desc">Tradezella export &mdash; 1 row per trade</div>
+            </div>
+          </button>
+          <button class="bulk-import-item" onclick="openImportPanel('fidelity')">
+            <span class="bii-icon">&#127974;</span>
+            <div class="bii-content">
+              <div class="bii-label">Fidelity Import CSV</div>
+              <div class="bii-desc">Fidelity Activity export &mdash; 1 row per leg</div>
+            </div>
+          </button>
+        </div>
+      </div>
       <div class="bulk-tb-divider"></div>
       <button class="bulk-act-btn" onclick="addBulkRow(1)">+ Add a Row</button>
       <button class="bulk-act-btn" onclick="addBulkRow(2)">+ Add 2 Rows</button>
@@ -443,6 +464,21 @@
         <button class="bulk-paste-btn" onclick="importTradezellaCSV()">&#10227; Import</button>
         <button class="bulk-paste-clear-btn" onclick="document.getElementById('bulk-tz-ta').value=''">Clear</button>
         <span class="bulk-paste-hint">Auto-tags mistakes &amp; creates <strong>2 legs per trade</strong> (open + close)</span>
+      </div>
+    </div>
+  </div>
+  <!-- ─── FIDELITY CSV IMPORT PANEL ─── -->
+  <div class="bulk-paste-panel" id="bulk-fidelity-panel" style="display:none">
+    <div class="bulk-paste-inner">
+      <div class="bulk-paste-label">Fidelity Import CSV — paste or load your exported Activity CSV</div>
+      <textarea id="bulk-fid-ta" class="bulk-paste-ta" placeholder="Paste Fidelity Activity CSV here (including header row)&#10;&#10;Run Date,Action,Symbol,Description,Type,Exchange Quantity,Exchange Currency,Currency,Price,Quantity,Exchange Rate,Commission,Fees,Accrued Interest,Amount,Cash Balance,Settlement Date"></textarea>
+      <div class="bulk-paste-actions">
+        <label class="bulk-paste-btn" style="cursor:pointer">&#128193; Choose CSV file
+          <input type="file" id="bulk-fid-file" accept=".csv" style="display:none" onchange="onFidelityFileSelected(this)">
+        </label>
+        <button class="bulk-paste-btn" onclick="importFidelityCSV()">&#10227; Import</button>
+        <button class="bulk-paste-clear-btn" onclick="document.getElementById('bulk-fid-ta').value=''">Clear</button>
+        <span class="bulk-paste-hint">Groups legs by contract &mdash; <strong>each row = one leg</strong> (Buy or Sell)</span>
       </div>
     </div>
   </div>

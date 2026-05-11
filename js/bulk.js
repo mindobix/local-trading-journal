@@ -721,16 +721,41 @@ function transformPastedTrades() {
   }
 }
 
-// ─── TRADEZELLA CSV IMPORT ───
+// ─── CSV IMPORT DROPDOWN ───
 
-function toggleTradezellaPanel() {
-  const panel  = document.getElementById('bulk-tradezella-panel');
-  const btn    = document.getElementById('bulk-tz-toggle-btn');
-  const open   = panel.style.display === 'none';
-
-  panel.style.display = open ? 'block' : 'none';
+function toggleBulkImportDropdown(event) {
+  if (event) event.stopPropagation();
+  const menu = document.getElementById('bulk-import-menu');
+  const btn  = document.getElementById('bulk-import-toggle-btn');
+  const open = !menu.classList.contains('open');
+  menu.classList.toggle('open', open);
   btn.classList.toggle('active', open);
 }
+
+function closeBulkImportDropdown() {
+  document.getElementById('bulk-import-menu')?.classList.remove('open');
+  document.getElementById('bulk-import-toggle-btn')?.classList.remove('active');
+}
+
+document.addEventListener('click', e => {
+  const dd = document.getElementById('bulk-import-dropdown');
+  if (dd && !dd.contains(e.target)) closeBulkImportDropdown();
+});
+
+// Open one of the import panels and hide the other. `which` = 'tradezella' | 'fidelity'.
+function openImportPanel(which) {
+  const tz  = document.getElementById('bulk-tradezella-panel');
+  const fid = document.getElementById('bulk-fidelity-panel');
+  const target = which === 'fidelity' ? fid : tz;
+  const other  = which === 'fidelity' ? tz : fid;
+
+  target.style.display = target.style.display === 'none' ? 'block' : 'none';
+  other.style.display = 'none';
+
+  closeBulkImportDropdown();
+}
+
+// ─── TRADEZELLA CSV IMPORT ───
 
 function onTradezellaFileSelected(input) {
   const file = input.files[0];
@@ -1038,7 +1063,7 @@ function importTradezellaCSV() {
   if (added > 0) {
     _scrollBulkBottom();
     document.getElementById('bulk-tradezella-panel').style.display = 'none';
-    document.getElementById('bulk-tz-toggle-btn').classList.remove('active');
+    document.getElementById('bulk-import-toggle-btn')?.classList.remove('active');
     ta.value = '';
   }
 
@@ -1055,4 +1080,285 @@ function importTradezellaCSV() {
   } else if (added > 0) {
     _hideBulkMsg();
   }
+}
+
+// ─── FIDELITY CSV IMPORT ───
+
+function onFidelityFileSelected(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    document.getElementById('bulk-fid-ta').value = e.target.result;
+  };
+  reader.readAsText(file);
+  input.value = '';
+}
+
+// Build a column-index map from the Fidelity header row.
+function _fidBuildColMap(headerCols) {
+  const map = {};
+  headerCols.forEach((h, i) => {
+    const k = h.toLowerCase().trim();
+    if (k === 'run date')           map.runDate     = i;
+    else if (k === 'action')        map.action      = i;
+    else if (k === 'symbol')        map.symbol      = i;
+    else if (k === 'description')   map.description = i;
+    else if (k === 'price' || k === 'price ($)') map.price = i;
+    else if (k === 'quantity')      map.quantity    = i;
+    else if (k === 'commission')    map.commission  = i;
+    else if (k === 'fees')          map.fees        = i;
+  });
+  return map;
+}
+
+// Parse Fidelity Run Date "MM/DD/YYYY" → "YYYY-MM-DD"
+function _fidParseDate(s) {
+  const m = (s || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!m) return '';
+  const mo = m[1].padStart(2, '0');
+  const dd = m[2].padStart(2, '0');
+  return `${m[3]}-${mo}-${dd}`;
+}
+
+// Parse Fidelity Symbol like "-MU260515C820" → option contract details.
+// Returns null for unrecognised input (caller falls back to stock).
+function _fidParseOptionSymbol(raw) {
+  const s = (raw || '').trim();
+  // Strip leading dash; option contracts start with "-"
+  if (!s.startsWith('-')) return null;
+  const body = s.slice(1);
+  // -TICKER YYMMDD C|P STRIKE  (strike may be integer, decimal, or 8-digit OCC ×1000)
+  const m = body.match(/^([A-Z][A-Z0-9.]{0,6})(\d{6})([CP])(\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  const ticker  = m[1];
+  const yymmdd  = m[2];
+  const cp      = m[3];
+  let strikeRaw = m[4];
+
+  const yy   = parseInt(yymmdd.slice(0, 2), 10);
+  const year = (yy >= 70 ? 1900 : 2000) + yy;
+  const mo   = yymmdd.slice(2, 4);
+  const dd   = yymmdd.slice(4, 6);
+
+  // OCC long-form strike: 8 digits, no decimal → strike × 1000
+  let strike = strikeRaw;
+  if (!strikeRaw.includes('.') && strikeRaw.length === 8) {
+    strike = String(parseInt(strikeRaw, 10) / 1000);
+  }
+
+  return {
+    symbol:      ticker,
+    type:        'option',
+    optionType:  cp === 'C' ? 'call' : 'put',
+    strikePrice: strike,
+    expiryDate:  `${year}-${mo}-${dd}`,
+  };
+}
+
+// Default time per transaction phase (Fidelity Activity export has no time field).
+function _fidDefaultTime(actionStr) {
+  return /CLOSING/i.test(actionStr || '') ? '15:55' : '09:30';
+}
+
+function importFidelityCSV() {
+  const ta  = document.getElementById('bulk-fid-ta');
+  const raw = (ta.value || '').replace(/^﻿/, '').trim();
+  if (!raw) return;
+
+  const allLines = raw.split(/\r?\n/);
+
+  // Find the header row — skip Fidelity's preamble/disclaimer lines.
+  let headerIdx = -1;
+  for (let i = 0; i < allLines.length; i++) {
+    const lc = allLines[i].toLowerCase();
+    if (lc.includes('run date') && lc.includes('action') && lc.includes('symbol')) {
+      headerIdx = i;
+      break;
+    }
+  }
+  if (headerIdx === -1) {
+    const panel = document.getElementById('bulk-msg-panel');
+    panel.className = 'bulk-msg-panel bulk-msg-error';
+    panel.style.display = 'block';
+    panel.innerHTML = `<div class="bulk-msg-hdr"><span>&#9888;&nbsp; Could not find a Fidelity header row (expecting "Run Date,Action,Symbol,…")</span><button class="bulk-msg-x" onclick="_hideBulkMsg()">&#10005;</button></div>`;
+    return;
+  }
+
+  const headerCols = _parseCsvLine(allLines[headerIdx].replace(/^﻿/, ''));
+  const col        = _fidBuildColMap(headerCols);
+
+  // Data rows: must start with a date in MM/DD/YYYY (skips disclaimer lines).
+  const dataLines = allLines.slice(headerIdx + 1)
+    .filter(l => /^\s*"?\d{1,2}\/\d{1,2}\/\d{4}/.test(l));
+
+  if (!dataLines.length) {
+    const panel = document.getElementById('bulk-msg-panel');
+    panel.className = 'bulk-msg-panel bulk-msg-error';
+    panel.style.display = 'block';
+    panel.innerHTML = `<div class="bulk-msg-hdr"><span>&#9888;&nbsp; No data rows found in Fidelity CSV</span><button class="bulk-msg-x" onclick="_hideBulkMsg()">&#10005;</button></div>`;
+    return;
+  }
+
+  const warn   = [];
+  const parsed = [];
+
+  for (const line of dataLines) {
+    const cols = _parseCsvLine(line);
+    if (cols.length < 5) {
+      warn.push(`Skipped (too few columns): "${line.slice(0, 60)}"`);
+      continue;
+    }
+
+    const runDate     = cols[col.runDate]     ?? '';
+    const actionStr   = (cols[col.action]      ?? '').toUpperCase();
+    const symbolRaw   = (cols[col.symbol]      ?? '').trim();
+    const description = cols[col.description]  ?? '';
+    const priceRaw    = cols[col.price]        ?? '';
+    const qtyRaw      = cols[col.quantity]     ?? '';
+    const commRaw     = col.commission != null ? (cols[col.commission] ?? '0') : '0';
+    const feesRaw     = col.fees       != null ? (cols[col.fees]       ?? '0') : '0';
+
+    const date = _fidParseDate(runDate);
+    if (!date) {
+      warn.push(`Skipped (bad date): "${line.slice(0, 60)}"`);
+      continue;
+    }
+
+    // Determine buy/sell from Action text (Quantity sign is a backup)
+    let action;
+    if (/YOU BOUGHT|^BOUGHT|BUY\b/.test(actionStr))      action = 'buy';
+    else if (/YOU SOLD|^SOLD|SELL\b/.test(actionStr))    action = 'sell';
+    else {
+      const qn = parseFloat(qtyRaw);
+      if (!isNaN(qn)) action = qn < 0 ? 'sell' : 'buy';
+      else { warn.push(`Skipped (unknown action): "${actionStr.slice(0, 40)}"`); continue; }
+    }
+
+    // Option vs stock
+    const optInstr = _fidParseOptionSymbol(symbolRaw);
+    const instr    = optInstr || {
+      symbol:      symbolRaw.replace(/^-/, '').toUpperCase(),
+      type:        'stock',
+      optionType:  '',
+      strikePrice: '',
+      expiryDate:  '',
+    };
+    if (!instr.symbol) {
+      warn.push(`Skipped (no symbol): "${line.slice(0, 60)}"`);
+      continue;
+    }
+
+    const qty   = Math.abs(parseFloat(qtyRaw) || 0);
+    const price = Math.abs(parseFloat(priceRaw) || 0);
+    const comm  = Math.abs(parseFloat(commRaw) || 0);
+    const fees  = Math.abs(parseFloat(feesRaw) || 0);
+
+    if (qty <= 0 || price <= 0) {
+      warn.push(`Skipped (zero qty/price): "${line.slice(0, 60)}"`);
+      continue;
+    }
+
+    parsed.push({
+      instr,
+      action,
+      date,
+      time:     _fidDefaultTime(actionStr),
+      phase:    /OPENING/i.test(actionStr) ? 0 : /CLOSING/i.test(actionStr) ? 1 : 0,
+      qty,
+      price,
+      comm,
+      fees,
+    });
+  }
+
+  if (!parsed.length) {
+    _showFidelityResult(0, warn);
+    return;
+  }
+
+  // Group legs by contract key. Each unique contract becomes one trade.
+  const groups = {};
+  const groupOrder = [];
+  for (const p of parsed) {
+    const key = `${p.instr.symbol}|${p.instr.type}|${p.instr.optionType}|${p.instr.strikePrice}|${p.instr.expiryDate}`;
+    if (!groups[key]) {
+      groups[key] = { instr: p.instr, legs: [] };
+      groupOrder.push(key);
+    }
+    groups[key].legs.push(p);
+  }
+
+  // Sort legs within each group: date asc, then opening (0) before closing (1)
+  for (const key of groupOrder) {
+    groups[key].legs.sort((a, b) =>
+      a.date !== b.date ? a.date.localeCompare(b.date) : a.phase - b.phase
+    );
+  }
+
+  // Determine next Trade ID and whether to reuse the initial empty row
+  let maxNum = 0;
+  for (const r of bulkRows) {
+    const m = r.tradeId.match(/^T(\d+)$/i);
+    if (m) maxNum = Math.max(maxNum, parseInt(m[1]));
+  }
+  const hasRealData = _bulkHasData();
+  let added       = 0;
+  let firstWritten = false;
+
+  for (const key of groupOrder) {
+    const { instr, legs } = groups[key];
+    maxNum++;
+    const tradeId = 'T' + maxNum;
+
+    for (const leg of legs) {
+      const newRow = _newBulkRow(tradeId, {
+        ...instr,
+        action:     leg.action,
+        datetime:   `${leg.date}T${leg.time}`,
+        quantity:   String(leg.qty),
+        commission: String(leg.comm),
+        fees:       String(leg.fees),
+        tags: [], mistakes: [], rules: [],
+      });
+      newRow.price = String(leg.price);
+
+      const lastRow = bulkRows[bulkRows.length - 1];
+      const reuseEmpty = !hasRealData && !firstWritten &&
+        !lastRow.symbol && lastRow.price === '' && lastRow.quantity === '';
+
+      if (reuseEmpty) {
+        bulkRows[bulkRows.length - 1] = newRow;
+      } else {
+        bulkRows.push(newRow);
+      }
+      firstWritten = true;
+    }
+    added++;
+  }
+
+  renderBulkGrid();
+
+  if (added > 0) {
+    _scrollBulkBottom();
+    document.getElementById('bulk-fidelity-panel').style.display = 'none';
+    document.getElementById('bulk-import-toggle-btn')?.classList.remove('active');
+    ta.value = '';
+  }
+
+  _showFidelityResult(added, warn);
+}
+
+function _showFidelityResult(added, warn) {
+  if (!warn.length && added > 0) { _hideBulkMsg(); return; }
+  if (!warn.length && added === 0) return;
+  const panel = document.getElementById('bulk-msg-panel');
+  panel.className = 'bulk-msg-panel bulk-msg-error';
+  panel.style.display = 'block';
+  panel.innerHTML =
+    `<div class="bulk-msg-hdr">
+      <span>&#9888;&nbsp; ${added} trade${added !== 1 ? 's' : ''} imported · ${warn.length} row${warn.length !== 1 ? 's' : ''} skipped</span>
+      <button class="bulk-msg-x" onclick="_hideBulkMsg()">&#10005;</button>
+    </div>
+    <div class="bulk-msg-errs">${warn.map(w => `<div class="bulk-msg-err-row">${escHtml(w)}</div>`).join('')}</div>`;
 }
