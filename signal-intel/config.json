@@ -13,7 +13,9 @@
     "GOOG",
     "NBIS",
     "CRWV",
-    "COIN"
+    "COIN",
+    "AMD",
+    "ARM"
   ],
   "signalConfidenceThreshold": 0.55,
   "crawlIntervalMinutes": 5,
@@ -266,7 +268,39 @@
       "symbol": "COIN",
       "enabled": true,
       "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=COIN"
+    },
+    {
+      "id": "yf-amd",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "AMD",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=AMD&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-amd",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "AMD",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=AMD"
+    },
+    {
+      "id": "yf-arm",
+      "name": "Yahoo Finance",
+      "type": "rss",
+      "symbol": "ARM",
+      "enabled": true,
+      "url": "https://feeds.finance.yahoo.com/rss/2.0/headline?s=ARM&region=US&lang=en-US"
+    },
+    {
+      "id": "nq-arm",
+      "name": "Nasdaq",
+      "type": "rss",
+      "symbol": "ARM",
+      "enabled": true,
+      "url": "https://www.nasdaq.com/feed/rssoutbound?symbol=ARM"
     }
   ],
-  "analystModel": "llama3.2:latest"
+  "analystModel": "gemma3:4b"
 }
