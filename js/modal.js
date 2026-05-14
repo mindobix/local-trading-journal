@@ -75,7 +75,8 @@ function refreshWeekModal() {
 
 // ─── SHARED TRADE ITEM RENDERER ───
 
-function tradeItemHtml(t) {
+function tradeItemHtml(t, opts) {
+  opts = opts || {};
   const p    = getPnl(t);
   const pCls = p >= 0 ? 'pos' : 'neg';
   const pStr = (p < 0 ? '-$' : '$') + Math.abs(p).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
@@ -123,7 +124,14 @@ function tradeItemHtml(t) {
     const allTags     = loadTags();
     const allMistakes = loadMistakes();
     const allRules    = loadRules();
+    const strat       = (!opts.hideStrategyChip && typeof getStrategyForTrade === 'function')
+      ? getStrategyForTrade(t.id)
+      : null;
+    const stratBadge  = strat
+      ? `<span class="trade-strategy-badge" title="Part of strategy: ${escHtml(strat.strategyType)}${strat.label ? ' — ' + escHtml(strat.label) : ''}">&#128279; ${escHtml(strat.strategyType)}</span>`
+      : null;
     const badges = [
+      stratBadge,
       ...(t.tags     || []).map(id => { const tg = allTags.find(x => x.id === id);     return tg ? `<span class="trade-tag-badge">${escHtml(tg.text)}</span>`         : null; }),
       ...(t.mistakes || []).map(id => { const m  = allMistakes.find(x => x.id === id); return m  ? `<span class="trade-mistake-badge">${escHtml(m.text)}</span>`       : null; }),
       ...(t.rules    || []).map(id => { const r  = allRules.find(x => x.id === id);    return r  ? `<span class="trade-rule-badge">${escHtml(r.text)}</span>`           : null; }),
@@ -219,7 +227,387 @@ function refreshDayModal() {
       `<div style="text-align:center;padding:20px 0 12px;color:var(--text-muted);font-size:13px">No trades yet — add one below.</div>`;
     return;
   }
-  document.getElementById('trade-list').innerHTML = trades.map(t => tradeItemHtml(t)).join('');
+
+  // Group trades by their option strategy (if any). Trades that belong to
+  // a strategy whose siblings are all on this day are rendered inside a
+  // wrapper. Trades whose strategy spans other dates (rare — rolls) are
+  // rendered standalone with just the chip.
+  const lookup = (typeof buildStrategyLookup === 'function') ? buildStrategyLookup() : new Map();
+  const html = [];
+  const rendered = new Set();
+  for (const t of trades) {
+    if (rendered.has(t.id)) continue;
+    const strat = lookup.get(t.id);
+    if (strat) {
+      // Collect all sibling trades that are present in *today's* slice
+      const siblings = trades.filter(x => strat.tradeIds.includes(x.id));
+      if (siblings.length >= 2) {
+        html.push(strategyGroupHtml(strat, siblings));
+        for (const s of siblings) rendered.add(s.id);
+        continue;
+      }
+    }
+    html.push(tradeItemHtml(t));
+    rendered.add(t.id);
+  }
+  document.getElementById('trade-list').innerHTML = html.join('');
+}
+
+// Render a strategy wrapper around its sibling trades for the daily dialog.
+function strategyGroupHtml(strategy, trades) {
+  const pnl  = trades.reduce((s, t) => s + getPnl(t), 0);
+  const pCls = pnl >= 0 ? 'pos' : 'neg';
+  const pStr = (pnl < 0 ? '-$' : '$') + Math.abs(pnl).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const sym  = trades[0]?.symbol || '';
+  const labelHtml = strategy.label ? `<span class="strategy-label">${escHtml(strategy.label)}</span>` : '';
+  const innerHtml = trades.map(t => tradeItemHtml(t, { hideStrategyChip: true })).join('');
+  return `<div class="strategy-group" data-strategy-id="${strategy.id}">
+    <div class="strategy-group-hdr">
+      <span class="strategy-icon">&#128279;</span>
+      <span class="strategy-type">${escHtml(strategy.strategyType)}</span>
+      <span class="strategy-meta">${escHtml(sym)} &middot; ${trades.length} leg${trades.length !== 1 ? 's' : ''}</span>
+      ${labelHtml}
+      <span class="strategy-spacer"></span>
+      <span class="strategy-pnl ${pCls}">Combined ${pStr}</span>
+      <button class="icon-btn" onclick="openStrategyEditModal('${strategy.id}')" title="Rename strategy">&#9998;</button>
+      <button class="icon-btn del" onclick="ungroupStrategyConfirm('${strategy.id}')" title="Ungroup">&#10005;</button>
+    </div>
+    <div class="strategy-group-body">${innerHtml}</div>
+  </div>`;
+}
+
+// Toolbar action — run the detector on today's ungrouped trades and
+// persist newly-found strategies. Skips trades already in a strategy.
+function dailyAutoDetectStrategies() {
+  if (!activeDate || typeof detectStrategyGroups !== 'function') return;
+  const dayTrades = load().filter(t => {
+    if (t.legs && t.legs.length) return t.legs.some(l => l.date && l.date.split('T')[0] === activeDate);
+    return t.date === activeDate;
+  });
+  const lookup = buildStrategyLookup();
+  const ungrouped = dayTrades.filter(t => !lookup.has(t.id));
+  if (ungrouped.length < 2) {
+    alert('No ungrouped trades to detect.');
+    return;
+  }
+  const groups = detectStrategyGroups(ungrouped);
+  if (!groups.length) {
+    alert('No strategies detected.');
+    return;
+  }
+  for (const g of groups) {
+    saveOptionStrategy(createOptionStrategy(g.strategyType, g.tradeIds));
+  }
+  refreshDayModal();
+}
+
+function ungroupStrategyConfirm(strategyId) {
+  if (!confirm('Ungroup this strategy? The individual trades will remain.')) return;
+  deleteOptionStrategy(strategyId);
+  refreshCurrentModal();
+}
+
+function renameStrategyPrompt(strategyId) {
+  // Legacy entry point — now redirects to the full edit modal.
+  openStrategyEditModal(strategyId);
+}
+
+// ─── STRATEGY EDIT MODAL ──────────────────────────────────────────────
+//
+// Opened from the daily-dialog pencil. Lets the user change the strategy
+// type, edit the label, and toggle which trades are members. Candidate
+// trades are pulled from the same symbol+date(s) as the strategy's
+// existing members, so the user has a meaningful pool to add from.
+
+let _seEditingStrategyId = null;
+let _seCreateMode        = false;
+
+// Open the strategy-edit modal in "create" mode for the daily dialog.
+// All of today's trades are listed as candidates; none are pre-checked.
+function openDailyCreateStrategyModal() {
+  if (!activeDate) return;
+  _seCreateMode        = true;
+  _seEditingStrategyId = null;
+
+  const typeSel = document.getElementById('se-type');
+  if (typeSel) {
+    const types = (typeof OPTION_STRATEGY_TYPES !== 'undefined') ? OPTION_STRATEGY_TYPES : [];
+    typeSel.innerHTML = types.map(t =>
+      `<option value="${escHtml(t)}"${t === 'Custom' ? ' selected' : ''}>${escHtml(t)}</option>`
+    ).join('');
+  }
+  document.getElementById('se-label').value = '';
+
+  const todayTrades = load().filter(t => {
+    if (t.legs && t.legs.length) return t.legs.some(l => l.date && l.date.split('T')[0] === activeDate);
+    return t.date === activeDate;
+  });
+
+  const list = document.getElementById('se-trades-list');
+  list.innerHTML = todayTrades.map(t => {
+    const p     = getPnl(t);
+    const pCls  = p >= 0 ? 'pos' : 'neg';
+    const pStr  = (p < 0 ? '-$' : '$') + Math.abs(p).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const otherStrat = (typeof getStrategyForTrade === 'function') ? getStrategyForTrade(t.id) : null;
+    const otherNote  = otherStrat
+      ? `<div class="se-trade-note">Already in: ${escHtml(otherStrat.strategyType)}${otherStrat.label ? ' — ' + escHtml(otherStrat.label) : ''}</div>` : '';
+    const typeBadge = t.type === 'option'
+      ? `<span class="badge b-option">OPT</span> <span class="badge b-${t.optionType||'call'}">${(t.optionType||'?').toUpperCase()}</span> <span style="color:var(--text-muted);font-size:11px">$${t.strikePrice||'?'} &middot; exp ${fmtExpiry(t.expiryDate||'')}</span>`
+      : `<span class="badge b-stock">Stock</span>`;
+    return `<label class="se-trade-row">
+      <input type="checkbox" class="se-trade-check" data-trade-id="${escHtml(t.id)}">
+      <div class="se-trade-info">
+        <div class="se-trade-hdr"><strong>${escHtml(t.symbol)}</strong> ${typeBadge} <span style="color:var(--text-muted);font-size:11px">${escHtml(t.date)}</span></div>
+        ${otherNote}
+      </div>
+      <div class="se-trade-pnl ${pCls}">${pStr}</div>
+    </label>`;
+  }).join('');
+
+  document.getElementById('strategy-edit-sub').textContent = `Group today's trades into a new strategy`;
+  const delBtn = document.getElementById('se-delete-btn');
+  if (delBtn) delBtn.style.display = 'none';
+  document.getElementById('strategy-edit-overlay').classList.add('open');
+}
+
+// Show the Delete button again when opening the modal for an existing
+// strategy. Keep this in sync with openDailyCreateStrategyModal.
+function _seShowDeleteBtn() {
+  const delBtn = document.getElementById('se-delete-btn');
+  if (delBtn) delBtn.style.display = '';
+}
+
+function openStrategyEditModal(strategyId) {
+  const s = loadOptionStrategies().find(x => x.id === strategyId);
+  if (!s) { alert('Strategy not found.'); return; }
+  _seEditingStrategyId = strategyId;
+
+  // Type dropdown
+  const typeSel = document.getElementById('se-type');
+  if (typeSel) {
+    const types = (typeof OPTION_STRATEGY_TYPES !== 'undefined') ? OPTION_STRATEGY_TYPES : [];
+    typeSel.innerHTML = types.map(t =>
+      `<option value="${escHtml(t)}"${t === s.strategyType ? ' selected' : ''}>${escHtml(t)}</option>`
+    ).join('');
+  }
+  document.getElementById('se-label').value = s.label || '';
+
+  // Candidate trades = current members + all trades on the same symbol(s)
+  // and date(s) as those members. This gives the user a clear pool to
+  // add or remove from.
+  const all = load();
+  const memberIds = new Set(s.tradeIds || []);
+  const members = all.filter(t => memberIds.has(t.id));
+  const symDateKeys = new Set();
+  for (const m of members) {
+    const datesForTrade = (m.legs && m.legs.length)
+      ? new Set(m.legs.map(l => (l.date || '').split('T')[0]).filter(Boolean))
+      : new Set([m.date]);
+    for (const d of datesForTrade) symDateKeys.add(`${m.symbol}|${d}`);
+  }
+  const candidatesSet = new Set(members.map(m => m.id));
+  for (const t of all) {
+    const dates = (t.legs && t.legs.length)
+      ? t.legs.map(l => (l.date || '').split('T')[0]).filter(Boolean)
+      : [t.date];
+    if (dates.some(d => symDateKeys.has(`${t.symbol}|${d}`))) candidatesSet.add(t.id);
+  }
+  const candidates = all.filter(t => candidatesSet.has(t.id))
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+  // Build the trades list
+  const list = document.getElementById('se-trades-list');
+  list.innerHTML = candidates.map(t => {
+    const p     = getPnl(t);
+    const pCls  = p >= 0 ? 'pos' : 'neg';
+    const pStr  = (p < 0 ? '-$' : '$') + Math.abs(p).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const checked = memberIds.has(t.id) ? 'checked' : '';
+    const otherStrat = (typeof getStrategyForTrade === 'function') ? getStrategyForTrade(t.id) : null;
+    const otherNote = (otherStrat && otherStrat.id !== strategyId)
+      ? `<div class="se-trade-note">Already in: ${escHtml(otherStrat.strategyType)}${otherStrat.label ? ' — ' + escHtml(otherStrat.label) : ''}</div>` : '';
+    const typeBadge = t.type === 'option'
+      ? `<span class="badge b-option">OPT</span> <span class="badge b-${t.optionType||'call'}">${(t.optionType||'?').toUpperCase()}</span> <span style="color:var(--text-muted);font-size:11px">$${t.strikePrice||'?'} &middot; exp ${fmtExpiry(t.expiryDate||'')}</span>`
+      : `<span class="badge b-stock">Stock</span>`;
+    return `<label class="se-trade-row">
+      <input type="checkbox" class="se-trade-check" data-trade-id="${escHtml(t.id)}" ${checked}>
+      <div class="se-trade-info">
+        <div class="se-trade-hdr"><strong>${escHtml(t.symbol)}</strong> ${typeBadge} <span style="color:var(--text-muted);font-size:11px">${escHtml(t.date)}</span></div>
+        ${otherNote}
+      </div>
+      <div class="se-trade-pnl ${pCls}">${pStr}</div>
+    </label>`;
+  }).join('');
+
+  document.getElementById('strategy-edit-sub').textContent =
+    `${candidates.length} candidate trade${candidates.length !== 1 ? 's' : ''} on ${symDateKeys.size} symbol·date pair${symDateKeys.size !== 1 ? 's' : ''}`;
+
+  _seShowDeleteBtn();
+  document.getElementById('strategy-edit-overlay').classList.add('open');
+}
+
+// Internal: close the overlay without touching mode flags.
+function _closeStrategyEditOverlay() {
+  document.getElementById('strategy-edit-overlay').classList.remove('open');
+}
+
+function closeStrategyEditModal() {
+  _closeStrategyEditOverlay();
+  _seEditingStrategyId = null;
+  _seCreateMode        = false;
+  if (typeof _bulkEditStratKey !== 'undefined') _bulkEditStratKey = null;
+}
+
+function saveStrategyFromEditModal() {
+  // Bulk-grid mode — pre-save draft strategies live in bulkRows.
+  if (typeof _bulkEditStratKey !== 'undefined' && _bulkEditStratKey) {
+    if (typeof _bulkSaveStrategyFromEditModal === 'function') _bulkSaveStrategyFromEditModal();
+    return;
+  }
+
+  // Daily-create mode — build a brand-new strategy from checked trades.
+  if (_seCreateMode) {
+    const checked = Array.from(document.querySelectorAll('.se-trade-check:checked'))
+      .map(el => el.getAttribute('data-trade-id'))
+      .filter(Boolean);
+    if (checked.length < 2) {
+      alert('A strategy needs at least 2 trades. Check more boxes, or click Cancel.');
+      return;
+    }
+    // Detach each checked trade from any existing strategy (single-owner).
+    for (const id of checked) {
+      const other = (typeof getStrategyForTrade === 'function') ? getStrategyForTrade(id) : null;
+      if (other) detachTradeFromStrategy(id);
+    }
+    const type  = document.getElementById('se-type').value || 'Custom';
+    const label = (document.getElementById('se-label').value || '').trim();
+    saveOptionStrategy(createOptionStrategy(type, checked, label));
+    closeStrategyEditModal();
+    refreshCurrentModal();
+    return;
+  }
+
+  if (!_seEditingStrategyId) return;
+  const s = loadOptionStrategies().find(x => x.id === _seEditingStrategyId);
+  if (!s) { closeStrategyEditModal(); return; }
+
+  const checked = Array.from(document.querySelectorAll('.se-trade-check:checked'))
+    .map(el => el.getAttribute('data-trade-id'))
+    .filter(Boolean);
+
+  if (checked.length < 2) {
+    alert('A strategy needs at least 2 trades. Either add more, or click Delete Strategy.');
+    return;
+  }
+
+  // If any newly-checked trade is currently in a DIFFERENT strategy, detach
+  // it from that strategy first (it's a single-owner relationship).
+  const memberSet = new Set(s.tradeIds || []);
+  for (const id of checked) {
+    if (memberSet.has(id)) continue;
+    const other = (typeof getStrategyForTrade === 'function') ? getStrategyForTrade(id) : null;
+    if (other && other.id !== s.id) {
+      detachTradeFromStrategy(id);
+    }
+  }
+
+  s.tradeIds    = checked;
+  s.strategyType = document.getElementById('se-type').value || s.strategyType;
+  s.label       = (document.getElementById('se-label').value || '').trim();
+  saveOptionStrategy(s);
+  closeStrategyEditModal();
+  refreshCurrentModal();
+}
+
+function deleteStrategyFromEditModal() {
+  // Bulk-grid mode — clear stratKey from rows, no IDB write.
+  if (typeof _bulkEditStratKey !== 'undefined' && _bulkEditStratKey) {
+    if (typeof _bulkDeleteStrategyFromEditModal === 'function') _bulkDeleteStrategyFromEditModal();
+    return;
+  }
+  if (!_seEditingStrategyId) return;
+  if (!confirm('Delete this strategy? The trades themselves will be kept.')) return;
+  deleteOptionStrategy(_seEditingStrategyId);
+  closeStrategyEditModal();
+  refreshCurrentModal();
+}
+
+// Close the edit-strategy overlay on background click + Escape.
+(function _wireStrategyEditOverlay() {
+  const ov = document.getElementById('strategy-edit-overlay');
+  if (ov) ov.addEventListener('click', function (e) { if (e.target === ov) closeStrategyEditModal(); });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && document.getElementById('strategy-edit-overlay')?.classList.contains('open')) {
+      closeStrategyEditModal();
+    }
+  });
+})();
+
+// ─── EDIT FORM — STRATEGY ROW ─────────────────────────────────────────
+
+function _strategyOptionLabel(s) {
+  const trades = load();
+  const firstId = (s.tradeIds || [])[0];
+  const firstTrade = firstId ? trades.find(t => t.id === firstId) : null;
+  const ctx = firstTrade ? ` (${firstTrade.symbol} ${firstTrade.date})` : '';
+  const labelPart = s.label ? ` — ${s.label}` : '';
+  return `${s.strategyType}${labelPart}${ctx}`;
+}
+
+function renderStrategyRowForForm(tradeId) {
+  const wrap = document.getElementById('f-strategy-wrap');
+  const row  = document.getElementById('f-strategy-row');
+  if (!wrap || !row) return;
+  if (!tradeId || typeof getStrategyForTrade !== 'function') {
+    wrap.style.display = 'none';
+    return;
+  }
+  wrap.style.display = '';
+
+  const current = getStrategyForTrade(tradeId);
+  if (current) {
+    const labelHtml = current.label ? ` — ${escHtml(current.label)}` : '';
+    row.innerHTML =
+      `<span class="f-strat-label">Strategy:</span>
+       <span class="f-strat-chip">&#128279; ${escHtml(current.strategyType)}${labelHtml}</span>
+       <span class="f-strat-spacer"></span>
+       <button type="button" onclick="renameStrategyPrompt('${escHtml(current.id)}')" title="Rename strategy">Rename</button>
+       <button type="button" class="danger" onclick="detachTradeStrategyFromForm('${escHtml(tradeId)}')" title="Remove this trade from the strategy">Detach</button>`;
+    return;
+  }
+
+  const all = (typeof loadOptionStrategies === 'function' ? loadOptionStrategies() : [])
+    .slice()
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  if (!all.length) {
+    row.innerHTML =
+      `<span class="f-strat-label">Strategy:</span>
+       <span style="color:var(--text-muted);font-size:11.5px">No strategies yet — group trades from the Daily dialog or CSV import.</span>`;
+    return;
+  }
+  const opts = all.slice(0, 50).map(s =>
+    `<option value="${escHtml(s.id)}">${escHtml(_strategyOptionLabel(s))}</option>`
+  ).join('');
+  row.innerHTML =
+    `<span class="f-strat-label">Strategy:</span>
+     <select id="f-strat-attach-sel">
+       <option value="">— Attach to existing strategy… —</option>
+       ${opts}
+     </select>
+     <button type="button" onclick="attachTradeStrategyFromForm('${escHtml(tradeId)}')">Attach</button>`;
+}
+
+function attachTradeStrategyFromForm(tradeId) {
+  const sel = document.getElementById('f-strat-attach-sel');
+  if (!sel || !sel.value) return;
+  if (typeof attachTradeToStrategy === 'function') attachTradeToStrategy(tradeId, sel.value);
+  renderStrategyRowForForm(tradeId);
+  refreshCurrentModal();
+}
+
+function detachTradeStrategyFromForm(tradeId) {
+  if (typeof detachTradeFromStrategy === 'function') detachTradeFromStrategy(tradeId);
+  renderStrategyRowForForm(tradeId);
+  refreshCurrentModal();
 }
 
 function closeModal() {
@@ -656,6 +1044,8 @@ function showForm(id) {
     clearForm();
   }
 
+  renderStrategyRowForForm(id);
+
   onTypeChange();
 
   document.getElementById('add-row-btn').style.display = 'none';
@@ -865,6 +1255,9 @@ function saveTrade() {
 function deleteTrade(id) {
   if (!confirm('Delete this trade?')) return;
   save(load().filter(t => t.id !== id));
+  if (typeof cleanupStrategiesForDeletedTrade === 'function') {
+    cleanupStrategiesForDeletedTrade(id);
+  }
   refreshCurrentModal();
   renderStats();
   renderCalendar();

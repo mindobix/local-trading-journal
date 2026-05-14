@@ -273,7 +273,7 @@ function closeImportErrors() {
 
 function backupData() {
   const backup = {
-    version:    8,  // v8: removed newsConfig/newsTaxonomy, added llmTradePlans tracking
+    version:    9,  // v9: added optionStrategies
     exportedAt: new Date().toISOString(),
     settings: {
       filterState:   (typeof _captureFilterSnapshot === 'function') ? _captureFilterSnapshot() : null,
@@ -285,6 +285,7 @@ function backupData() {
     rules:        loadRules(),
     plans:        loadPlans(),
     ideas:        loadIdeas(),
+    optionStrategies: typeof loadOptionStrategies        === 'function' ? loadOptionStrategies()         : [],
     llmQueries:      typeof getLlmQueriesForBackup       === 'function' ? getLlmQueriesForBackup()       : null,
     llmTradePlans:   typeof getLlmTradePlansForBackup    === 'function' ? getLlmTradePlansForBackup()    : null,
     banking:         typeof getBankingDataForBackup      === 'function' ? getBankingDataForBackup()      : null,
@@ -402,6 +403,21 @@ function restoreData(event) {
     const addedIdeas  = (incoming.ideas || []).length - updatedIdeas;
     const mergedIdeas = [...existingIdeaMap.values()];
 
+    // Merge option strategies — incoming wins on ID conflict
+    let mergedStrategies = (typeof loadOptionStrategies === 'function') ? loadOptionStrategies() : [];
+    let addedStrategies   = 0;
+    let updatedStrategies = 0;
+    if (Array.isArray(incoming.optionStrategies) && typeof loadOptionStrategies === 'function') {
+      const stratMap = new Map(mergedStrategies.map(s => [s.id, s]));
+      for (const s of incoming.optionStrategies) {
+        if (!s || !s.id) continue;
+        if (stratMap.has(s.id)) updatedStrategies++;
+        else                    addedStrategies++;
+        stratMap.set(s.id, s);
+      }
+      mergedStrategies = [...stratMap.values()];
+    }
+
     // Await sequentially to avoid concurrent readwrite transaction contention
     await save(mergedTrades);
     await saveTags(mergedTags);
@@ -411,6 +427,14 @@ function restoreData(event) {
     // Plans need their in-memory cache updated first
     _plans = mergedPlans;
     await dbReplaceAll('plans', Object.entries(mergedPlans).map(([date, html]) => ({ date, html })));
+
+    // Persist option strategies, then prune any that now reference deleted trade ids
+    if (typeof loadOptionStrategies === 'function') {
+      _optionStrategies = mergedStrategies;
+      await dbReplaceAll('optionStrategies', mergedStrategies);
+      const tradeIdSet = new Set(mergedTrades.map(t => t.id));
+      await pruneOrphanStrategies(tradeIdSet);
+    }
 
     let restoredLlmQueries    = false;
     let restoredLlmTradePlans = false;
@@ -464,6 +488,8 @@ function restoreData(event) {
     if (updatedPlans  > 0) parts.push(`${updatedPlans} daily plan${updatedPlans !== 1 ? 's' : ''} updated`);
     if (addedIdeas    > 0) parts.push(`${addedIdeas} trade plan idea${addedIdeas !== 1 ? 's' : ''} added`);
     if (updatedIdeas  > 0) parts.push(`${updatedIdeas} trade plan idea${updatedIdeas !== 1 ? 's' : ''} updated`);
+    if (addedStrategies   > 0) parts.push(`${addedStrategies} option strateg${addedStrategies !== 1 ? 'ies' : 'y'} added`);
+    if (updatedStrategies > 0) parts.push(`${updatedStrategies} option strateg${updatedStrategies !== 1 ? 'ies' : 'y'} updated`);
     if (restoredLlmQueries)       parts.push('LLM prompts restored');
     if (restoredLlmTradePlans)    parts.push('LLM trade plans restored');
     if (restoredBankingEntries > 0) parts.push(`${restoredBankingEntries} banking entr${restoredBankingEntries !== 1 ? 'ies' : 'y'} added`);
@@ -521,6 +547,7 @@ document.addEventListener('keydown', e => {
 
     // Pre-load all data into memory before first render
     await _initStorageCore();
+    await _initOptionStrategiesStorage();
     await _initWotpStorage();
     await _initPlansStorage();
     await _initLlmTradePlansStorage();

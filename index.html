@@ -13,7 +13,7 @@
 <header class="header">
   <div class="logo">
     <div class="logo-name">Local<span class="logo-sep"> &rsaquo; </span><span class="logo-trade">Trade</span>Journal</div>
-    <div class="logo-version" id="app-version">v1.0.9</div>
+    <div class="logo-version" id="app-version">v1.1.0</div>
   </div>
   <nav class="nav">
     <button class="nav-btn active" id="nav-cal" onclick="switchView('calendar')">Calendar</button>
@@ -447,6 +447,8 @@
       <button class="bulk-act-btn" onclick="addBulkRow(1)">+ Add a Row</button>
       <button class="bulk-act-btn" onclick="addBulkRow(2)">+ Add 2 Rows</button>
       <button class="bulk-act-btn bulk-new-trade-btn" onclick="addNewBulkTrade()">+ New Trade</button>
+      <button class="bulk-act-btn" onclick="bulkAutoDetectStrategies()" title="Auto-detect option strategies across current rows">&#128279; Detect Strategies</button>
+      <button class="bulk-act-btn" onclick="openBulkCreateStrategyModal()" title="Manually group a set of trades into a strategy">+ Group Trades&hellip;</button>
       <div class="bulk-tb-divider"></div>
       <button class="bulk-save-btn" onclick="saveBulkTrades()">&#10003; Save Trades</button>
       <button class="bulk-close-btn" onclick="closeBulkView()" title="Close">&#10005;</button>
@@ -524,6 +526,14 @@
     <div class="modal-body">
       <div class="day-summary" id="day-summary"></div>
       <div id="trade-list"></div>
+      <div class="day-strat-toolbar" id="day-strat-toolbar">
+        <button type="button" class="day-strat-btn" onclick="dailyAutoDetectStrategies()" title="Detect option strategies among today's ungrouped trades">
+          &#128279; Auto-detect Strategies
+        </button>
+        <button type="button" class="day-strat-btn" onclick="openDailyCreateStrategyModal()" title="Manually group two or more trades into a strategy">
+          + Group Trades&hellip;
+        </button>
+      </div>
       <button class="add-trade-row" id="add-row-btn" onclick="showForm(null)">
         <span style="font-size:16px">+</span> Add New Trade
       </button>
@@ -544,6 +554,11 @@
               <option value="option">Option</option>
             </select>
           </div>
+        </div>
+
+        <!-- Option strategy (only for existing trades) -->
+        <div id="f-strategy-wrap" style="display:none">
+          <div class="f-strategy-row" id="f-strategy-row"></div>
         </div>
 
         <!-- Option-only fields -->
@@ -688,6 +703,43 @@
         <div class="form-actions">
           <button class="btn btn-ghost" onclick="cancelForm()">Cancel</button>
           <button class="btn btn-primary" onclick="saveTrade()">Save Trade</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ─── EDIT STRATEGY DIALOG ─── -->
+<div class="overlay" id="strategy-edit-overlay">
+  <div class="modal" id="strategy-edit-modal" style="max-width:640px">
+    <div class="modal-hdr">
+      <div>
+        <div class="modal-hdr-title">Edit Strategy</div>
+        <div class="modal-hdr-sub" id="strategy-edit-sub"></div>
+      </div>
+      <button class="close-btn" onclick="closeStrategyEditModal()">&#10005;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="fg">
+          <label>Strategy Type</label>
+          <select id="se-type"></select>
+        </div>
+        <div class="fg">
+          <label>Label (optional)</label>
+          <input type="text" id="se-label" placeholder='e.g. "Bull Call Spread"'>
+        </div>
+      </div>
+      <hr class="section-divider">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin:6px 0 8px">
+        Trades in this strategy
+      </div>
+      <div id="se-trades-list" class="se-trades-list"></div>
+      <div class="form-actions" style="margin-top:16px;justify-content:space-between">
+        <button class="btn btn-ghost" id="se-delete-btn" style="color:var(--red);border-color:var(--red)" onclick="deleteStrategyFromEditModal()">Delete Strategy</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-ghost" onclick="closeStrategyEditModal()">Cancel</button>
+          <button class="btn btn-primary" onclick="saveStrategyFromEditModal()">Save Strategy</button>
         </div>
       </div>
     </div>
@@ -844,6 +896,7 @@
 <script src="js/db.js"></script>
 <script src="js/migration.js"></script>
 <script src="js/storage.js"></script>
+<script src="js/option-strategies.js"></script>
 <script src="js/wotp-storage.js"></script>
 <script src="js/helpers.js"></script>
 <script src="js/wotp-helpers.js"></script>

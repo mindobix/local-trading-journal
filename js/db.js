@@ -1,24 +1,25 @@
 /* ── db.js ── IndexedDB core layer ────────────────────────────────────
  *
- * Database: trading-journal-db  (version 4)
+ * Database: trading-journal-db  (version 5)
  * Object stores:
- *   trades           keyPath: 'id'
- *   tags             keyPath: 'id'
- *   mistakes         keyPath: 'id'
- *   rules            keyPath: 'id'
- *   ideas            keyPath: 'id'
- *   llmTradePlans    keyPath: 'id'
- *   llmQueries       keyPath: 'id'
- *   bankingAccounts  keyPath: 'id'
- *   bankingEntries   keyPath: 'id'
- *   plans            keyPath: 'date'   { date:'YYYY-MM-DD', html:'...' }
- *   settings         keyPath: 'key'    { key:'...', value:... }
+ *   trades            keyPath: 'id'
+ *   tags              keyPath: 'id'
+ *   mistakes          keyPath: 'id'
+ *   rules             keyPath: 'id'
+ *   ideas             keyPath: 'id'
+ *   llmTradePlans     keyPath: 'id'
+ *   llmQueries        keyPath: 'id'
+ *   bankingAccounts   keyPath: 'id'
+ *   bankingEntries    keyPath: 'id'
+ *   optionStrategies  keyPath: 'id'
+ *   plans             keyPath: 'date'   { date:'YYYY-MM-DD', html:'...' }
+ *   settings          keyPath: 'key'    { key:'...', value:... }
  *
  * All functions are async and return Promises.
  * ───────────────────────────────────────────────────────────────────── */
 
 const TJ_DB_NAME    = 'trading-journal-db';
-const TJ_DB_VERSION = 4;
+const TJ_DB_VERSION = 5;
 
 let _tjIdb = null;
 
@@ -47,7 +48,7 @@ function _openTjDb() {
 
     req.onupgradeneeded = e => {
       const db = e.target.result;
-      for (const name of ['trades','tags','mistakes','rules','ideas','llmTradePlans','llmQueries','bankingAccounts','bankingEntries']) {
+      for (const name of ['trades','tags','mistakes','rules','ideas','llmTradePlans','llmQueries','bankingAccounts','bankingEntries','optionStrategies']) {
         if (!db.objectStoreNames.contains(name)) db.createObjectStore(name, { keyPath: 'id' });
       }
       if (!db.objectStoreNames.contains('plans'))    db.createObjectStore('plans',    { keyPath: 'date' });

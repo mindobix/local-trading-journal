@@ -461,3 +461,83 @@
 }
 .bulk-del-btn:hover { color: var(--red); background: var(--red-bg); }
 
+/* ─── STRATEGY GROUPING (separator + accent) ─── */
+.bulk-strat-hdr td {
+  padding: 0;
+  background: linear-gradient(90deg, rgba(99,102,241,0.16), rgba(99,102,241,0.04));
+  border-bottom: 1px solid rgba(99,102,241,0.35);
+  border-top: 1px solid rgba(99,102,241,0.35);
+}
+.bulk-strat-hdr-inner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.bulk-strat-icon { font-size: 13px; opacity: 0.85; }
+.bulk-strat-type {
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 0.02em;
+}
+.bulk-strat-meta { color: var(--text-muted); font-size: 11px; }
+.bulk-strat-spacer { flex: 1; }
+.bulk-strat-sel-lbl {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.bulk-strat-sel {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+.bulk-strat-ungroup,
+.bulk-strat-edit {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.12s;
+}
+.bulk-strat-ungroup:hover { color: var(--red);    border-color: var(--red);    }
+.bulk-strat-edit:hover    { color: var(--accent); border-color: var(--accent); }
+
+/* Grouped row visuals — left accent + subtle full-row tint */
+.bulk-row-strat td {
+  background: rgba(99,102,241,0.06);
+}
+.bulk-row-strat.bulk-row-alt td {
+  background: rgba(99,102,241,0.085);
+}
+.bulk-row-strat td:first-child {
+  border-left: 3px solid var(--accent);
+}
+.bulk-row-strat td:last-child {
+  border-right: 3px solid rgba(99,102,241,0.45);
+}
+/* End-of-group: solid bottom and visible gap before next row */
+.bulk-row-strat-last td {
+  border-bottom: 2px solid rgba(99,102,241,0.45);
+  padding-bottom: 6px;
+}
+.bulk-row-strat-last + .bulk-row td {
+  padding-top: 8px;
+}
+/* Strategy group footer separator — invisible spacer that lets adjacent
+   rules read cleanly without an accent stripe leaking onto the next row. */
+.bulk-strat-end td {
+  padding: 0;
+  height: 6px;
+  background: transparent;
+  border: none;
+}

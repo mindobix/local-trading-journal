@@ -148,10 +148,15 @@ function renderTrades() {
       .map(id => { const tg = allTags.find(x => x.id === id); return tg ? `<span class="trade-tag-badge">${escHtml(tg.text)}</span>` : null; })
       .filter(Boolean).join(' ');
 
+    const strat = (typeof getStrategyForTrade === 'function') ? getStrategyForTrade(t.id) : null;
+    const stratPill = strat
+      ? `<div class="trade-strategy-badge" style="display:inline-flex;margin-top:3px;font-size:10px" title="Part of strategy: ${escHtml(strat.strategyType)}${strat.label ? ' — ' + escHtml(strat.label) : ''}">&#128279; ${escHtml(strat.strategyType)}</div>`
+      : '';
+
     return `<tr>
       <td class="col-rownum-cell">${pageOffset + i + 1}</td>
       <td>${dateStr}</td>
-      <td><strong>${t.symbol}</strong></td>
+      <td><div><strong>${t.symbol}</strong></div>${stratPill}</td>
       <td>${sideLabel}</td>
       <td>${typeLbl}</td>
       <td>${legsSummary(t)}</td>

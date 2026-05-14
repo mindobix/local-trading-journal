@@ -64,8 +64,29 @@ Click the edit icon on any trade and the form opens directly below that trade �
 - Unsaved changes trigger a browser leave-confirmation so you never lose work accidentally
 - Import trades in bulk from a CSV file (broker export or manual entry) — download the column template from the app header
 - **Tradezella CSV Import** — import directly from a Tradezella export. Each completed trade row becomes two execution legs (BUY open + SELL close). Supports both old and new Tradezella CSV column layouts automatically. Short stock trades are detected and flipped (SELL open → BUY close). Commission is split evenly across both legs. Mistake tags are auto-created from trade metadata: *Not Planned Trade*, *Traded between 11:30–4:00pm*, *Impulsive Trade* (SPXW options after 3:30pm), and *Add to Losing Trade*.
+- **Fidelity CSV Import** — import from a Fidelity Activity export. Each row is one execution leg; legs are grouped by contract (option OCC symbol or stock ticker) into one trade per contract. Opening transactions default to 09:30, closing to 15:55. Stock shorts are inferred from negative quantity. Mistake auto-tagging is **not** applied to Fidelity imports.
+- **Option strategy auto-detection** — after a CSV import (or on demand via the **🔗 Detect Strategies** toolbar button) the bulk grid finds and groups multi-leg option strategies across the rows. Detection is pure pattern matching — no AI — over the 15 Schwab strategy types (Spread, Calendar Spread, Diagonal Spread, Ratio Spread, Straddle, Strangle, Butterfly, Condor, Iron Condor, Iron Butterfly, Buy Write, Collar, Roll, Custom, Calls & Puts). Sub-group search means unrelated trades on the same symbol/date are *not* lumped together — only the trades that form a named pattern get grouped, the rest stay ungrouped. A separator row appears above each detected group with a type-override dropdown, an **✎ Edit** button (full edit modal), and an **Ungroup** button. Use **+ Group Trades…** to manually create a strategy from any combination of rows.
 - After saving, the page stays on Bulk Trade Entry. A persistent toast shows the saved count, a **View Trades →** link that pre-filters to the imported date range, and a × dismiss button.
-- Full JSON backup/restore — export everything (trades, tags, rules, plans, ideas, LLM prompts) and restore it to any browser
+- Full JSON backup/restore — export everything (trades, tags, rules, plans, ideas, LLM prompts, option strategies, banking) and restore it to any browser
+
+### Option Strategies (v1.1.0)
+
+Link multiple option trades into a single strategy (e.g. a Vertical Spread, Iron Condor, Straddle) **without changing the underlying trade records**. Each strategy is a lightweight record in its own `optionStrategies` IndexedDB store that just lists the trade IDs it groups.
+
+**Where strategies show up:**
+- **Daily Trades dialog** — sibling trades render inside a single strategy wrapper with the strategy type, optional user label, and **combined P&L** across the legs. The wrapper has a ✎ pencil to open the edit modal and an × to ungroup.
+- **Trades tab table** — a colored chip appears under the symbol cell of any trade that's part of a strategy.
+- **Edit Trade form** — when editing a single trade, a Strategy row shows the chip + Detach (if in a strategy) or an "Attach to existing…" picker (if not).
+
+**How strategies are created:**
+- **Auto-detect** — runs automatically after a Tradezella or Fidelity CSV import in the Bulk Trade Entry view, and on demand via the **🔗 Auto-detect Strategies** button inside the Daily Trades dialog. The detector enumerates subsets of each symbol+date bucket and emits *only* named patterns — unrelated trades stay ungrouped.
+- **Manual grouping** — **+ Group Trades…** in either surface opens a checklist of candidate trades; pick which ones belong, pick a type from the 15-strategy dropdown, set an optional label, save.
+- **Edit existing** — the ✎ pencil opens the same modal so you can change the type, edit the label, add/remove member trades, or delete the strategy entirely (trades remain).
+
+**Strategies the detector recognises:**
+Vertical Spread, Calendar Spread, Diagonal Spread, Ratio Spread, Straddle, Strangle, Butterfly, Condor, Iron Condor, Iron Butterfly, Buy Write, Collar, plus a manual **Custom** type and **Roll**/**Calls & Puts** as labels-only.
+
+Strategies survive backup/restore — they're included in the JSON export and merged by ID on restore (incoming wins on conflict). Strategies whose member trades are deleted are auto-pruned; a strategy that drops below 2 members is removed entirely.
 
 ### Calendar Tab
 The default landing view. Click any day to open a detailed daily breakdown or any week label to open a weekly summary.
@@ -300,6 +321,7 @@ IndexedDB grows with your data — no 5 MB cap. On first load the app automatica
 | `llmQueries` | `id` | LLM prompt entries |
 | `bankingAccounts` | `id` | Banking account definitions (name, brokerage, order) |
 | `bankingEntries` | `id` | Banking transfer/funding rows (date, bankAmount, brokerageAmount) |
+| `optionStrategies` | `id` | Multi-trade option strategy links (`{ strategyType, label, tradeIds[], createdAt, notes }`) |
 | `settings` | `key` | UI state, news config/taxonomy, LLM results, per-symbol report snapshots |
 
 Signal Intel data is stored locally under `news-crawler/data/` and is never sent to any external service.
@@ -411,6 +433,7 @@ local-trading-journal/
 │   ├── reports.css         # Reports tab
 │   ├── trade-plan.css      # Trade plan (monthly/weekly/daily)
 │   ├── targets.css         # Profit targets, stop loss, R-multiple
+│   ├── option-strategies.css # Strategy wrapper, chip, edit-form row
 │   ├── bulk-entry.css      # Bulk trade entry spreadsheet view
 │   ├── news.css            # Signal news tab
 │   ├── llm.css             # LLM Prompts tab
@@ -431,6 +454,7 @@ local-trading-journal/
 │   ├── reports.js          # Reports tab
 │   ├── plan.js             # Trade Plan tab (3-view + daily editor)
 │   ├── storage.js          # IndexedDB: trades, tags, rules, mistakes (in-memory cache)
+│   ├── option-strategies.js # IndexedDB: optionStrategies store + pattern detector + edit handlers
 │   ├── wotp-storage.js     # IndexedDB: trade plan ideas (in-memory cache)
 │   ├── banking.js          # Banking tab — accounts, entries, pivot tables (IndexedDB-backed)
 │   ├── helpers.js          # Date formatting, HTML escaping

@@ -8,6 +8,7 @@
 @import url('filters.css');           /* Stats bar, filter bar, active filters */
 @import url('calendar.css');          /* Calendar nav, grid, weekly layout     */
 @import url('trades.css');            /* Trades view, modal, trade form, legs  */
+@import url('option-strategies.css'); /* Strategy wrapper, chip, edit-form row */
 @import url('rules-tags-mistakes.css'); /* Trading rules, tags, mistakes       */
 @import url('daily-plan.css');        /* Daily plan tab                        */
 @import url('reports.css');           /* Reports tab                           */

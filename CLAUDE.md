@@ -1,6 +1,6 @@
 # PROJECT: Local Trading Journal
 
-> Last updated: 2026-04-25 — keep this current. If something here is wrong, fix it before doing anything else.
+> Last updated: 2026-05-14 — keep this current. If something here is wrong, fix it before doing anything else.
 
 ---
 
@@ -8,7 +8,7 @@
 
 A privacy-first, browser-only trading journal that runs entirely on the user's machine — no account, no server (for the core journal), no data leaving the browser. All trade and plan data lives in IndexedDB. An optional **Signal Intel** background server (`signal-intel/`) adds local AI-powered news/signal analysis. Marketed as a free replacement for paid SaaS journals (Tradervue, TraderSync, Tradezella).
 
-**Stage:** Production (v1.0.7 in `version.json` / `index.html` — the README is occasionally ahead)
+**Stage:** Production (v1.1.0 in `version.json` / `index.html` — the README is occasionally ahead)
 **Primary user:** Active retail options & equities trader (the repo owner) who reviews trades daily
 **Success metric:** Daily use — every trade logged, every day's P&L tagged with rules/mistakes
 
@@ -46,6 +46,7 @@ local-trading-journal/
 │   ├── migration.js        # One-time localStorage → IDB migration; guarded by _migrated_v1
 │   ├── app.js              # Async IIFE init sequence at bottom; tab switching; backup/restore
 │   ├── storage.js          # trades / tags / mistakes / rules — in-memory cache + IDB writes
+│   ├── option-strategies.js # optionStrategies store + detector (Schwab 15 strategies)
 │   ├── wotp-storage.js     # ideas (trade plan) — same pattern
 │   ├── plan.js             # Trade Plan tab + plans/<date> records
 │   ├── llm-prompts.js      # LLM Prompts tab
@@ -86,7 +87,7 @@ local-trading-journal/
 - **Never** call `localStorage.getItem/setItem` in new code. Migration owns localStorage; everything else is IDB.
 
 **Init sequence** (in `app.js` async IIFE at bottom of file)
-`_openTjDb` → `runMigrationIfNeeded` → `_initStorageCore` → `_initWotpStorage` → `_initPlansStorage` → `_initLlmTradePlansStorage` → `_initNewsStorage` → `_initCalendarMonth` → `_initBankingStorage` → render. Don't reorder without understanding why.
+`_openTjDb` → `runMigrationIfNeeded` → `_initStorageCore` → `_initOptionStrategiesStorage` → `_initWotpStorage` → `_initPlansStorage` → `_initLlmTradePlansStorage` → `_initLlmStorage` → `_initBankingStorage` → `_initCalendarMonth` → render. Don't reorder without understanding why.
 
 **Naming**
 - Files: `kebab-case.js` / `kebab-case.css`.
@@ -113,8 +114,8 @@ local-trading-journal/
 ## 5. Versioning
 
 Version lives in **two** places that must stay in sync:
-1. `version.json` → `{ "version": "1.0.7" }`
-2. `index.html` → `<div class="logo-version" id="app-version">v1.0.7</div>`
+1. `version.json` → `{ "version": "1.1.0" }`
+2. `index.html` → `<div class="logo-version" id="app-version">v1.1.0</div>`
 
 Bump both for any user-visible change. Use semver-ish: minor for new tabs/features, patch for fixes.
 
@@ -214,6 +215,8 @@ There's no `pnpm dev`, no `pnpm test`, no `pnpm typecheck`. If you reach for one
 - Vanilla JS, no framework. Chosen so the app stays a single static file bundle that opens with no install.
 - IndexedDB with in-memory cache (not raw IDB or a wrapper library). Chose this so the entire public API stays sync — migrating thousands of call sites to async would have been a much bigger lift.
 - Signal Intel uses local `@xenova/transformers` (not a hosted LLM API). Chosen so users don't need API keys and signal analysis stays free + private.
+- Option strategies (v1.1.0) link multiple trades via a dedicated `optionStrategies` store with `tradeIds[]`. **No back-pointer field on the trade record** — `getStrategyForTrade(tradeId)` scans the strategies cache. Chosen to keep the trade schema untouched; the strategies cache is small enough that scanning is free in practice.
+- Strategy detection is pure pattern matching (no AI) over the 15 Schwab strategy categories. `detectStrategy()` returns `null` (not `'Custom'`) when no named pattern matches; `findStrategySubgroups()` then enumerates size 4→2 subsets so a bucket of mixed unrelated trades surfaces only the named sub-strategies and leaves the rest ungrouped.
 
 **Known weirdness:**
 - Some files use semicolons, some don't. Match the file you're in.

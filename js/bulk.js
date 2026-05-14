@@ -74,11 +74,254 @@ function _newBulkRow(tradeId, src) {
     tags:        src ? [...src.tags]     : [],
     mistakes:    src ? [...src.mistakes] : [],
     rules:       src ? [...src.rules]    : [],
+    stratKey:    '',
+    stratType:   '',
+    stratLabel:  '',
   };
 }
 
 function _copyBulkRow(src) {
   return _newBulkRow(src.tradeId, src);
+}
+
+// ─── STRATEGY DETECTION (bulk grid) ───
+//
+// Builds draft trades from the current bulkRows (grouped by user-supplied
+// tradeId like "T1"), runs the shared detector, and stamps stratKey/stratType
+// onto each affected row. Returns the count of detected groups.
+
+function _bulkDetectStrategies() {
+  if (typeof detectStrategyGroups !== 'function') return 0;
+
+  // Group rows into draft trades by user tradeId
+  const draftMap = {};
+  for (const r of bulkRows) {
+    const tid = (r.tradeId || '').trim().toUpperCase();
+    if (!tid) continue;
+    if (!draftMap[tid]) {
+      draftMap[tid] = {
+        id:          tid,
+        symbol:      (r.symbol || '').trim().toUpperCase(),
+        type:        r.type,
+        optionType:  r.type === 'option' ? (r.optionType  || null) : null,
+        strikePrice: r.type === 'option' ? (parseFloat(r.strikePrice) || 0) : null,
+        expiryDate:  r.type === 'option' ? (r.expiryDate  || '') : null,
+        date:        '',
+        legs:        [],
+      };
+    }
+    draftMap[tid].legs.push({ action: r.action, date: r.datetime || '', quantity: r.quantity });
+  }
+  const drafts = Object.values(draftMap);
+  for (const t of drafts) {
+    if (!t.legs.length) continue;
+    const earliest = [...t.legs].sort((a, b) => (a.date || '').localeCompare(b.date || ''))[0];
+    t.date = (earliest.date || '').split('T')[0];
+  }
+
+  // Clear any prior detection so re-running this gives a clean answer
+  for (const r of bulkRows) { r.stratKey = ''; r.stratType = ''; r.stratLabel = ''; }
+
+  const groups = detectStrategyGroups(drafts);
+  for (const g of groups) {
+    const tidSet = new Set(g.tradeIds);
+    for (const r of bulkRows) {
+      const tid = (r.tradeId || '').trim().toUpperCase();
+      if (tidSet.has(tid)) {
+        r.stratKey  = g.key;
+        r.stratType = g.strategyType;
+      }
+    }
+  }
+  return groups.length;
+}
+
+// Render the group separator row that appears above the first row of each
+// strategy-grouped block. Includes a type-override dropdown and Ungroup.
+function _bulkStratHdrHtml(stratKey, stratType, stratLabel) {
+  const sample = bulkRows.find(r => r.stratKey === stratKey);
+  const sym    = sample ? (sample.symbol || '?') : '?';
+  const dt     = sample ? (sample.datetime || '') : '';
+  const date   = dt ? dt.split('T')[0] : '';
+  const types  = (typeof OPTION_STRATEGY_TYPES !== 'undefined') ? OPTION_STRATEGY_TYPES : [];
+  const opts   = types.map(t => `<option value="${escHtml(t)}"${t === stratType ? ' selected' : ''}>${escHtml(t)}</option>`).join('');
+  const labelDisp = stratLabel ? ` &middot; ${escHtml(stratLabel)}` : '';
+  return `<tr class="bulk-strat-hdr" data-stratkey="${escHtml(stratKey)}">
+  <td colspan="17">
+    <div class="bulk-strat-hdr-inner">
+      <span class="bulk-strat-icon">&#128279;</span>
+      <span class="bulk-strat-type">${escHtml(stratType || 'Custom')}</span>
+      <span class="bulk-strat-meta">${escHtml(sym)}${date ? ' &middot; ' + escHtml(date) : ''}${labelDisp}</span>
+      <span class="bulk-strat-spacer"></span>
+      <label class="bulk-strat-sel-lbl">Type:
+        <select class="bulk-strat-sel" onchange="_bulkChangeStrategyType('${escHtml(stratKey)}', this.value)">${opts}</select>
+      </label>
+      <button type="button" class="bulk-strat-edit" onclick="openBulkStrategyEditModal('${escHtml(stratKey)}')" title="Edit which trades are in this strategy">&#9998; Edit</button>
+      <button type="button" class="bulk-strat-ungroup" onclick="_bulkUngroupStrategy('${escHtml(stratKey)}')" title="Remove this strategy grouping">Ungroup</button>
+    </div>
+  </td>
+</tr>`;
+}
+
+// Render a minimal "group end" separator. Closes a strategy block so the
+// next ungrouped row visually escapes the accent border.
+function _bulkStratEndHtml(stratType) {
+  return `<tr class="bulk-strat-end" data-strat-end="1"><td colspan="17"></td></tr>`;
+}
+
+// ─── BULK STRATEGY EDIT MODAL ─────────────────────────────────────────
+//
+// Reuses the daily-dialog #strategy-edit-overlay markup. A module-level
+// flag (_bulkEditStratKey) tells the shared save/delete handlers in
+// modal.js to operate on bulkRows instead of the saved strategies store.
+
+let _bulkEditStratKey = null;
+
+function openBulkStrategyEditModal(stratKey) {
+  const groupRows = bulkRows.filter(r => r.stratKey === stratKey);
+  // Don't bail when groupRows is empty — that's "create mode" (a fresh
+  // stratKey passed by openBulkCreateStrategyModal). The modal renders
+  // all draft trades unchecked, defaulted to type=Custom.
+  _bulkEditStratKey = stratKey;
+
+  const isCreate     = groupRows.length === 0;
+  const currentType  = isCreate ? 'Custom' : (groupRows[0].stratType  || 'Custom');
+  const currentLabel = isCreate ? ''       : (groupRows[0].stratLabel || '');
+
+  const typeSel = document.getElementById('se-type');
+  if (typeSel) {
+    const types = (typeof OPTION_STRATEGY_TYPES !== 'undefined') ? OPTION_STRATEGY_TYPES : [];
+    typeSel.innerHTML = types.map(t =>
+      `<option value="${escHtml(t)}"${t === currentType ? ' selected' : ''}>${escHtml(t)}</option>`
+    ).join('');
+  }
+  document.getElementById('se-label').value = currentLabel;
+
+  // Build one entry per user-supplied tradeId (T1, T2, …)
+  const draftMap = {};
+  for (const r of bulkRows) {
+    const tid = (r.tradeId || '').trim().toUpperCase();
+    if (!tid) continue;
+    if (!draftMap[tid]) {
+      draftMap[tid] = { tid, rows: [], inGroup: false, otherStratType: '' };
+    }
+    draftMap[tid].rows.push(r);
+    if (r.stratKey === stratKey) draftMap[tid].inGroup = true;
+    else if (r.stratKey) draftMap[tid].otherStratType = r.stratType || 'another group';
+  }
+  const drafts = Object.values(draftMap)
+    .sort((a, b) => a.tid.localeCompare(b.tid, undefined, { numeric: true }));
+
+  const list = document.getElementById('se-trades-list');
+  list.innerHTML = drafts.map(d => {
+    const first = d.rows[0];
+    const isOpt = first.type === 'option';
+    const typeBadge = isOpt
+      ? `<span class="badge b-option">OPT</span> <span class="badge b-${first.optionType||'call'}">${(first.optionType||'?').toUpperCase()}</span> <span style="color:var(--text-muted);font-size:11px">$${escHtml(String(first.strikePrice||'?'))} &middot; exp ${escHtml(first.expiryDate||'')}</span>`
+      : `<span class="badge b-stock">Stock</span>`;
+    const otherNote = d.otherStratType
+      ? `<div class="se-trade-note">Currently in: ${escHtml(d.otherStratType)}</div>` : '';
+    return `<label class="se-trade-row">
+      <input type="checkbox" class="se-trade-check" data-tid="${escHtml(d.tid)}" ${d.inGroup ? 'checked' : ''}>
+      <div class="se-trade-info">
+        <div class="se-trade-hdr"><strong>${escHtml(d.tid)}</strong> &nbsp; <strong>${escHtml(first.symbol||'?')}</strong> ${typeBadge}</div>
+        ${otherNote}
+      </div>
+      <div class="se-trade-pnl" style="color:var(--text-muted);font-weight:500;font-size:11px">${d.rows.length} row${d.rows.length !== 1 ? 's' : ''}</div>
+    </label>`;
+  }).join('');
+
+  const subText = isCreate
+    ? `Group trades from this bulk batch into a new strategy`
+    : `${drafts.length} candidate trade${drafts.length !== 1 ? 's' : ''} in this bulk batch`;
+  document.getElementById('strategy-edit-sub').textContent = subText;
+
+  const delBtn = document.getElementById('se-delete-btn');
+  if (delBtn) delBtn.style.display = isCreate ? 'none' : '';
+
+  document.getElementById('strategy-edit-overlay').classList.add('open');
+}
+
+// Open the same modal in "create mode" — fresh stratKey, nothing checked.
+function openBulkCreateStrategyModal() {
+  if (!bulkRows.length) { alert('Add some rows first.'); return; }
+  // Generate a stratKey not currently in use
+  let stratKey;
+  do {
+    stratKey = 'bulk_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+  } while (bulkRows.some(r => r.stratKey === stratKey));
+  openBulkStrategyEditModal(stratKey);
+}
+
+function _bulkSaveStrategyFromEditModal() {
+  if (!_bulkEditStratKey) return;
+  const stratKey = _bulkEditStratKey;
+  const checked = Array.from(document.querySelectorAll('.se-trade-check:checked'))
+    .map(el => el.getAttribute('data-tid'))
+    .filter(Boolean);
+  if (checked.length < 2) {
+    alert('A strategy needs at least 2 trades. Either add more, or click Delete Strategy.');
+    return;
+  }
+  const newType  = (document.getElementById('se-type').value || '').trim() || 'Custom';
+  const newLabel = (document.getElementById('se-label').value || '').trim();
+  const selSet   = new Set(checked);
+
+  for (const r of bulkRows) {
+    const tid = (r.tradeId || '').trim().toUpperCase();
+    if (selSet.has(tid)) {
+      // Single-owner: take over the row's stratKey from any other group
+      r.stratKey   = stratKey;
+      r.stratType  = newType;
+      r.stratLabel = newLabel;
+    } else if (r.stratKey === stratKey) {
+      r.stratKey = ''; r.stratType = ''; r.stratLabel = '';
+    }
+  }
+  _bulkEditStratKey = null;
+  if (typeof _closeStrategyEditOverlay === 'function') _closeStrategyEditOverlay();
+  renderBulkGrid();
+}
+
+function _bulkDeleteStrategyFromEditModal() {
+  if (!_bulkEditStratKey) return;
+  if (!confirm('Remove this strategy grouping? The trade rows will remain.')) return;
+  const stratKey = _bulkEditStratKey;
+  for (const r of bulkRows) {
+    if (r.stratKey === stratKey) { r.stratKey = ''; r.stratType = ''; r.stratLabel = ''; }
+  }
+  _bulkEditStratKey = null;
+  if (typeof _closeStrategyEditOverlay === 'function') _closeStrategyEditOverlay();
+  renderBulkGrid();
+}
+
+// Toolbar action — manual re-detect; updates the grid and shows a toast.
+function bulkAutoDetectStrategies() {
+  const n = _bulkDetectStrategies();
+  renderBulkGrid();
+  const panel = document.getElementById('bulk-msg-panel');
+  if (!panel) return;
+  panel.className = 'bulk-msg-panel bulk-msg-success';
+  panel.style.display = 'flex';
+  panel.innerHTML =
+    `<span>&#10003;&nbsp; ${n} strateg${n !== 1 ? 'ies' : 'y'} detected</span>
+     <button class="bulk-msg-x" onclick="_hideBulkMsg()" title="Dismiss">&#10005;</button>`;
+}
+
+// Change the detected strategy type for one group (separator-row dropdown).
+function _bulkChangeStrategyType(stratKey, newType) {
+  for (const r of bulkRows) {
+    if (r.stratKey === stratKey) r.stratType = newType;
+  }
+  renderBulkGrid();
+}
+
+// Remove the strategy grouping for one group.
+function _bulkUngroupStrategy(stratKey) {
+  for (const r of bulkRows) {
+    if (r.stratKey === stratKey) { r.stratKey = ''; r.stratType = ''; r.stratLabel = ''; }
+  }
+  renderBulkGrid();
 }
 
 function addBulkRow(count) {
@@ -145,9 +388,27 @@ function renderBulkGrid() {
 
   const ev = s => escHtml(String(s ?? ''));
 
-  tbody.innerHTML = bulkRows.map(r => {
+  const parts = [];
+  let prevStratKey  = null;
+  let prevStratType = '';
+  for (let _i = 0; _i < bulkRows.length; _i++) {
+    const r    = bulkRows[_i];
+    const next = bulkRows[_i + 1];
+    // Close the prior group if we're leaving it
+    if (prevStratKey && r.stratKey !== prevStratKey) {
+      parts.push(_bulkStratEndHtml(prevStratType));
+    }
+    if (r.stratKey && r.stratKey !== prevStratKey) {
+      parts.push(_bulkStratHdrHtml(r.stratKey, r.stratType, r.stratLabel));
+    }
+    prevStratKey  = r.stratKey || null;
+    prevStratType = r.stratType || '';
+
     const isOpt  = r.type === 'option';
     const altCls = groupMap[r.tradeId] % 2 === 1 ? ' bulk-row-alt' : '';
+    const inStrat   = !!r.stratKey;
+    const lastInGrp = inStrat && (!next || next.stratKey !== r.stratKey);
+    const stratCls  = inStrat ? (' bulk-row-strat' + (lastInGrp ? ' bulk-row-strat-last' : '')) : '';
     const tl = r.tags.length     ? r.tags.length     + ' ✓' : '—';
     const ml = r.mistakes.length ? r.mistakes.length + ' ✓' : '—';
     const rl = r.rules.length    ? r.rules.length    + ' ✓' : '—';
@@ -156,7 +417,7 @@ function renderBulkGrid() {
     const hsr = r.rules.length    ? ' has-sel' : '';
 
     // col indices: 0=del, 1=tid, 2=sym, 3=type, 4=opttype, 5=strike, 6=expiry, 7=action, 8=dt, 9=price, 10=qty, 11=comm, 12=fees, 13=tags, 14=mistakes, 15=rules, 16=notes
-    return `<tr class="bulk-row${altCls}" data-rowid="${r.rowId}">
+    parts.push(`<tr class="bulk-row${altCls}${stratCls}" data-rowid="${r.rowId}">
   <td><button class="bulk-del-btn" onclick="deleteBulkRow('${r.rowId}')" title="Remove row">&#10005;</button></td>
   <td><input class="bulk-input bulk-tid" value="${ev(r.tradeId)}" placeholder="T1"
     oninput="updateBulkField('${r.rowId}','tradeId',this.value.toUpperCase());this.value=this.value.toUpperCase()"></td>
@@ -198,8 +459,11 @@ function renderBulkGrid() {
     onclick="toggleBulkCellDd(event,'${r.rowId}','rules')">${rl}</button></td>
   <td><input class="bulk-input bulk-notes" type="text" value="${ev(r.notes)}" placeholder="Optional…"
     oninput="updateBulkField('${r.rowId}','notes',this.value)"></td>
-</tr>`;
-  }).join('');
+</tr>`);
+  }
+  // Close out any trailing strategy block that ran to the end of the grid.
+  if (prevStratKey) parts.push(_bulkStratEndHtml(prevStratType));
+  tbody.innerHTML = parts.join('');
 
   // Apply buy/sell color to selects after render
   tbody.querySelectorAll('.bulk-row').forEach(tr => {
@@ -427,7 +691,40 @@ function saveBulkTrades() {
   const maxDate  = dates[dates.length - 1];
   const legCount = newTrades.reduce((s, t) => s + t.legs.length, 0);
 
+  // Collect strategy groups from bulkRows BEFORE we reset the grid.
+  //   { stratKey → { strategyType, label, userTradeIds:Set<T1|T2…> } }
+  const stratGroups = {};
+  for (const r of bulkRows) {
+    if (!r.stratKey) continue;
+    const userTid = (r.tradeId || '').trim().toUpperCase();
+    if (!userTid) continue;
+    if (!stratGroups[r.stratKey]) {
+      stratGroups[r.stratKey] = {
+        strategyType: r.stratType || 'Custom',
+        label:        r.stratLabel || '',
+        userTradeIds: new Set(),
+      };
+    }
+    stratGroups[r.stratKey].userTradeIds.add(userTid);
+  }
+  // Translate user-facing tradeIds → actual saved trade ids via tradeMap.
+  const strategiesToSave = [];
+  if (typeof createOptionStrategy === 'function') {
+    for (const key of Object.keys(stratGroups)) {
+      const g = stratGroups[key];
+      const realIds = [...g.userTradeIds].map(tid => tradeMap[tid]?.id).filter(Boolean);
+      if (realIds.length >= 2) {
+        strategiesToSave.push(createOptionStrategy(g.strategyType, realIds, g.label));
+      }
+    }
+  }
+
   save([...load(), ...newTrades]);
+  // Persist detected strategies after the trade-save call (cache is in
+  // sync immediately; the IDB write fires in the background).
+  if (typeof saveOptionStrategy === 'function') {
+    for (const s of strategiesToSave) saveOptionStrategy(s);
+  }
   renderStats();
 
   // Reset grid to empty, ready for the next batch
@@ -437,8 +734,9 @@ function saveBulkTrades() {
   const panel = document.getElementById('bulk-msg-panel');
   panel.className = 'bulk-msg-panel bulk-msg-success';
   panel.style.display = 'flex';
+  const stratNote = strategiesToSave.length ? ` &middot; ${strategiesToSave.length} strateg${strategiesToSave.length !== 1 ? 'ies' : 'y'} grouped` : '';
   panel.innerHTML =
-    `<span>&#10003;&nbsp; ${newTrades.length} trade${newTrades.length !== 1 ? 's' : ''} (${legCount} leg${legCount !== 1 ? 's' : ''}) saved.</span>
+    `<span>&#10003;&nbsp; ${newTrades.length} trade${newTrades.length !== 1 ? 's' : ''} (${legCount} leg${legCount !== 1 ? 's' : ''}) saved${stratNote}.</span>
      <a class="bulk-toast-link" href="#" onclick="closeBulkView();drFrom='${minDate}';drTo='${maxDate}';document.getElementById('gf-from').value='${minDate}';document.getElementById('gf-to').value='${maxDate}';document.getElementById('gf-date').value='custom';_updateDrBtn();switchView('trades');return false;">View Trades &rarr;</a>
      <button class="bulk-msg-x" onclick="_hideBulkMsg()" title="Dismiss">&#10005;</button>`;
 }
@@ -1058,6 +1356,7 @@ function importTradezellaCSV() {
     added++;
   }
 
+  const stratCount = _bulkDetectStrategies();
   renderBulkGrid();
 
   if (added > 0) {
@@ -1073,12 +1372,21 @@ function importTradezellaCSV() {
     panel.style.display = 'block';
     panel.innerHTML =
       `<div class="bulk-msg-hdr">
-        <span>&#9888;&nbsp; ${added} trade${added !== 1 ? 's' : ''} imported · ${warn.length} row${warn.length !== 1 ? 's' : ''} skipped</span>
+        <span>&#9888;&nbsp; ${added} trade${added !== 1 ? 's' : ''} imported${stratCount ? ` &middot; ${stratCount} strateg${stratCount !== 1 ? 'ies' : 'y'} detected` : ''} &middot; ${warn.length} row${warn.length !== 1 ? 's' : ''} skipped</span>
         <button class="bulk-msg-x" onclick="_hideBulkMsg()">&#10005;</button>
       </div>
       <div class="bulk-msg-errs">${warn.map(w => `<div class="bulk-msg-err-row">${escHtml(w)}</div>`).join('')}</div>`;
   } else if (added > 0) {
-    _hideBulkMsg();
+    if (stratCount > 0) {
+      const panel = document.getElementById('bulk-msg-panel');
+      panel.className = 'bulk-msg-panel bulk-msg-success';
+      panel.style.display = 'flex';
+      panel.innerHTML =
+        `<span>&#10003;&nbsp; ${added} trade${added !== 1 ? 's' : ''} imported &middot; ${stratCount} strateg${stratCount !== 1 ? 'ies' : 'y'} detected</span>
+         <button class="bulk-msg-x" onclick="_hideBulkMsg()" title="Dismiss">&#10005;</button>`;
+    } else {
+      _hideBulkMsg();
+    }
   }
 }
 
@@ -1337,6 +1645,7 @@ function importFidelityCSV() {
     added++;
   }
 
+  const stratCount = _bulkDetectStrategies();
   renderBulkGrid();
 
   if (added > 0) {
@@ -1346,18 +1655,31 @@ function importFidelityCSV() {
     ta.value = '';
   }
 
-  _showFidelityResult(added, warn);
+  _showFidelityResult(added, warn, stratCount);
 }
 
-function _showFidelityResult(added, warn) {
-  if (!warn.length && added > 0) { _hideBulkMsg(); return; }
+function _showFidelityResult(added, warn, stratCount) {
+  const sCount = stratCount || 0;
+  if (!warn.length && added > 0) {
+    if (sCount > 0) {
+      const panel = document.getElementById('bulk-msg-panel');
+      panel.className = 'bulk-msg-panel bulk-msg-success';
+      panel.style.display = 'flex';
+      panel.innerHTML =
+        `<span>&#10003;&nbsp; ${added} trade${added !== 1 ? 's' : ''} imported &middot; ${sCount} strateg${sCount !== 1 ? 'ies' : 'y'} detected</span>
+         <button class="bulk-msg-x" onclick="_hideBulkMsg()" title="Dismiss">&#10005;</button>`;
+    } else {
+      _hideBulkMsg();
+    }
+    return;
+  }
   if (!warn.length && added === 0) return;
   const panel = document.getElementById('bulk-msg-panel');
   panel.className = 'bulk-msg-panel bulk-msg-error';
   panel.style.display = 'block';
   panel.innerHTML =
     `<div class="bulk-msg-hdr">
-      <span>&#9888;&nbsp; ${added} trade${added !== 1 ? 's' : ''} imported · ${warn.length} row${warn.length !== 1 ? 's' : ''} skipped</span>
+      <span>&#9888;&nbsp; ${added} trade${added !== 1 ? 's' : ''} imported${sCount ? ` &middot; ${sCount} strateg${sCount !== 1 ? 'ies' : 'y'} detected` : ''} &middot; ${warn.length} row${warn.length !== 1 ? 's' : ''} skipped</span>
       <button class="bulk-msg-x" onclick="_hideBulkMsg()">&#10005;</button>
     </div>
     <div class="bulk-msg-errs">${warn.map(w => `<div class="bulk-msg-err-row">${escHtml(w)}</div>`).join('')}</div>`;
