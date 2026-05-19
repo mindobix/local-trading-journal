@@ -223,15 +223,18 @@ function switchPlanView(v) {
   document.querySelectorAll('.plan-view-btn').forEach(b => b.classList.toggle('active', b.dataset.view === v));
 
   const isLlm = v === 'llm';
-  const mainWrap = document.getElementById('plan-main-wrap');
-  const llmWrap  = document.getElementById('plan-llm-wrap');
-  const navCtrl  = document.getElementById('plan-nav-controls');
-  const addBtn   = document.querySelector('.plan-add-btn');
+  const isDaily = v === 'daily';
+  const mainWrap   = document.getElementById('plan-main-wrap');
+  const llmWrap    = document.getElementById('plan-llm-wrap');
+  const navCtrl    = document.getElementById('plan-nav-controls');
+  const addBtn     = document.querySelector('.plan-add-btn');
+  const importBtn  = document.getElementById('plan-llm-import-btn');
 
-  if (mainWrap) mainWrap.style.display = isLlm ? 'none' : '';
-  if (llmWrap)  llmWrap.style.display  = isLlm ? ''     : 'none';
-  if (navCtrl)  navCtrl.style.display  = isLlm ? 'none' : '';
-  if (addBtn)   addBtn.style.display   = isLlm ? 'none' : '';
+  if (mainWrap)  mainWrap.style.display  = isLlm ? 'none' : '';
+  if (llmWrap)   llmWrap.style.display   = isLlm ? ''     : 'none';
+  if (navCtrl)   navCtrl.style.display   = isLlm ? 'none' : '';
+  if (addBtn)    addBtn.style.display    = isLlm ? 'none' : '';
+  if (importBtn) importBtn.style.display = isDaily ? '' : 'none';
 
   if (isLlm) {
     if (typeof _showLlmInPlan === 'function') _showLlmInPlan();
@@ -492,6 +495,9 @@ function initPlanView() {
     // Init idea modal
     initIdeaModal();
 
+    // Init LLM import modal
+    if (typeof initLlmImport === 'function') initLlmImport();
+
     // Nav buttons
     document.getElementById('plan-nav-prev').addEventListener('click', planNavPrev);
     document.getElementById('plan-nav-next').addEventListener('click', planNavNext);
@@ -518,6 +524,10 @@ function initPlanView() {
   document.querySelectorAll('.plan-view-btn').forEach(b => {
     b.classList.toggle('active', b.dataset.view === PLAN_STATE.view);
   });
+
+  // Sync Import LLM button visibility (only shown in Daily sub-tab)
+  const importBtn = document.getElementById('plan-llm-import-btn');
+  if (importBtn) importBtn.style.display = PLAN_STATE.view === 'daily' ? '' : 'none';
 
   renderPlanView();
 }

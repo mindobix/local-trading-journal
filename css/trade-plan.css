@@ -106,6 +106,63 @@
 }
 .plan-add-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 18px rgba(99,102,241,0.5); }
 
+/* ── Import LLM button (Daily sub-tab only) ── */
+.plan-llm-import-btn {
+  padding: 7px 14px;
+  margin-right: 8px;
+  border-radius: var(--radius);
+  border: 1px solid rgba(99,102,241,0.45);
+  background: var(--surface2);
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+.plan-llm-import-btn:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
+/* ── LLM import modal extras ── */
+.llm-import-modal { width: min(720px, calc(100vw - 32px)); }
+.llm-import-hint {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+.llm-import-ta {
+  width: 100%;
+  min-height: 280px;
+  max-height: 60vh;
+  resize: vertical;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text);
+  font-size: 12px;
+  font-family: 'Courier New', Courier, monospace;
+  padding: 10px 12px;
+  outline: none;
+  transition: border-color 0.15s;
+  box-sizing: border-box;
+}
+.llm-import-ta:focus { border-color: var(--accent); }
+.llm-import-ta::placeholder { color: var(--text-dim); }
+.llm-import-status {
+  margin-top: 10px;
+  min-height: 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.llm-import-status.ok  { color: var(--green, #10b981); }
+.llm-import-status.err { color: var(--red,   #ef4444); }
+
 /* ── Plan main wrap ── */
 .plan-main-wrap {
   padding: 20px 24px 60px;
