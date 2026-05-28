@@ -501,11 +501,11 @@ function _renderDrCal(side, year, month) {
 
   let html = `<div class="gf-dr-cal-hdr">`;
   html += side === 'l'
-    ? `<button class="gf-dr-nav" onclick="drNavMonth(-1)">&#8249;</button>`
+    ? `<button class="gf-dr-nav" onclick="drNavMonth(event,-1)">&#8249;</button>`
     : `<span class="gf-dr-nav-spacer"></span>`;
   html += `<span class="gf-dr-cal-title">${_DR_MONTHS[month]} ${year}</span>`;
   html += side === 'r'
-    ? `<button class="gf-dr-nav" onclick="drNavMonth(1)">&#8250;</button>`
+    ? `<button class="gf-dr-nav" onclick="drNavMonth(event,1)">&#8250;</button>`
     : `<span class="gf-dr-nav-spacer"></span>`;
   html += `</div><div class="gf-dr-cal-grid">`;
 
@@ -533,7 +533,8 @@ function _renderDrCal(side, year, month) {
   el.innerHTML = html;
 }
 
-function drNavMonth(delta) {
+function drNavMonth(e, delta) {
+  if (e) e.stopPropagation();
   drLeftMonth += delta;
   if (drLeftMonth < 0)  { drLeftMonth = 11; drLeftYear--; }
   if (drLeftMonth > 11) { drLeftMonth = 0;  drLeftYear++; }
@@ -599,11 +600,27 @@ function applyDrPreset(preset) {
       const e = new Date(s); e.setDate(s.getDate() + 6);
       from = fmt(s); to = fmt(e); break;
     }
+    case 'lastweek': {
+      const s = new Date(n); s.setDate(s.getDate() - 6);
+      from = fmt(s); to = fmt(n); break;
+    }
+    case 'last2weeks': {
+      const s = new Date(n); s.setDate(s.getDate() - 13);
+      from = fmt(s); to = fmt(n); break;
+    }
     case 'thismonth':
       from = `${n.getFullYear()}-${_drPad(n.getMonth()+1)}-01`;
       to   = fmt(new Date(n.getFullYear(), n.getMonth()+1, 0)); break;
     case 'last30': {
       const s = new Date(n); s.setDate(s.getDate() - 29);
+      from = fmt(s); to = fmt(n); break;
+    }
+    case 'last60': {
+      const s = new Date(n); s.setDate(s.getDate() - 59);
+      from = fmt(s); to = fmt(n); break;
+    }
+    case 'last90': {
+      const s = new Date(n); s.setDate(s.getDate() - 89);
       from = fmt(s); to = fmt(n); break;
     }
     case 'lastmonth': {
@@ -615,6 +632,13 @@ function applyDrPreset(preset) {
       const q = Math.floor(n.getMonth() / 3);
       from = `${n.getFullYear()}-${_drPad(q*3+1)}-01`;
       to   = fmt(new Date(n.getFullYear(), q*3+3, 0)); break;
+    }
+    case 'lastquarter': {
+      let q = Math.floor(n.getMonth() / 3) - 1;
+      let y = n.getFullYear();
+      if (q < 0) { q = 3; y--; }
+      from = `${y}-${_drPad(q*3+1)}-01`;
+      to   = fmt(new Date(y, q*3+3, 0)); break;
     }
     case 'ytd':
       from = `${n.getFullYear()}-01-01`; to = fmt(n); break;
