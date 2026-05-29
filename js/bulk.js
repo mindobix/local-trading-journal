@@ -1527,6 +1527,10 @@ function importFidelityCSV() {
     const commRaw     = col.commission != null ? (cols[col.commission] ?? '0') : '0';
     const feesRaw     = col.fees       != null ? (cols[col.fees]       ?? '0') : '0';
 
+    // Non-trade administrative rows (JOURNALED, dividends, interest, etc.) carry
+    // no Symbol — skip them silently rather than reporting them as errors.
+    if (!symbolRaw) continue;
+
     const date = _fidParseDate(runDate);
     if (!date) {
       warn.push(`Skipped (bad date): "${line.slice(0, 60)}"`);
