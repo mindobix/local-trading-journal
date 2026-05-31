@@ -1407,12 +1407,13 @@ function onFidelityFileSelected(input) {
 function _fidBuildColMap(headerCols) {
   const map = {};
   headerCols.forEach((h, i) => {
-    const k = h.toLowerCase().trim();
+    // Fidelity headers carry a " ($)" suffix on money columns — strip it.
+    const k = h.toLowerCase().trim().replace(/\s*\(\$\)$/, '').trim();
     if (k === 'run date')           map.runDate     = i;
     else if (k === 'action')        map.action      = i;
     else if (k === 'symbol')        map.symbol      = i;
     else if (k === 'description')   map.description = i;
-    else if (k === 'price' || k === 'price ($)') map.price = i;
+    else if (k === 'price')         map.price       = i;
     else if (k === 'quantity')      map.quantity    = i;
     else if (k === 'commission')    map.commission  = i;
     else if (k === 'fees')          map.fees        = i;
