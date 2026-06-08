@@ -168,6 +168,63 @@ function refreshCurrentModal() {
   else refreshDayModal();
 }
 
+// ─── EXPORT CSV (TradeByFire import format) ───
+// Header expected by vibecode/tradebyfire's CSV importer. Each leg is one row;
+// legs sharing a trade_id are grouped back into a single trade on import.
+const TRADEBYFIRE_CSV_HEADER = 'symbol,type,option_type,strike,expiry,action,datetime,price,quantity,commission,fees,trade_id';
+
+function exportDayTradesCSV() {
+  let trades, fileTag;
+  if (activeWeekStart) {
+    trades = load().filter(t => t.legs && t.legs.length
+      ? t.legs.some(l => l.date && l.date.split('T')[0] >= activeWeekStart && l.date.split('T')[0] <= activeWeekEnd)
+      : t.date >= activeWeekStart && t.date <= activeWeekEnd);
+    fileTag = `${activeWeekStart}_${activeWeekEnd}`;
+  } else {
+    trades = load().filter(t => t.legs && t.legs.length
+      ? t.legs.some(l => l.date && l.date.split('T')[0] === activeDate)
+      : t.date === activeDate);
+    fileTag = activeDate;
+  }
+
+  if (!trades.length) {
+    alert('No trades to export.');
+    return;
+  }
+
+  const esc = v => {
+    const s = (v === undefined || v === null) ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const rows = [TRADEBYFIRE_CSV_HEADER];
+  for (const t of trades) {
+    const otype  = t.type === 'option' ? (t.optionType || 'call') : '';
+    const strike = t.type === 'option' ? (t.strikePrice ?? '')   : '';
+    const expiry = t.type === 'option' ? (t.expiryDate || '')    : '';
+    // Legacy trades have no legs — synthesize entry/exit legs from side.
+    const legs = (t.legs && t.legs.length) ? t.legs : [
+      { action: t.side === 'short' ? 'sell' : 'buy', date: (t.date || '') + 'T09:30', price: t.entryPrice, quantity: t.quantity, commission: t.commission || 0, fees: t.fees || 0 },
+      { action: t.side === 'short' ? 'buy'  : 'sell', date: (t.date || '') + 'T16:00', price: t.exitPrice,  quantity: t.quantity, commission: 0, fees: 0 },
+    ];
+    for (const leg of legs) {
+      rows.push([
+        esc(t.symbol), esc(t.type || 'stock'), esc(otype), esc(strike), esc(expiry),
+        esc(leg.action), esc(leg.date), esc(leg.price), esc(leg.quantity),
+        esc(leg.commission || 0), esc(leg.fees || 0), esc(t.id),
+      ].join(','));
+    }
+  }
+
+  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `tradebyfire-import-${fileTag}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── DAY MODAL ───
 
 function openDay(dateStr) {

@@ -172,6 +172,20 @@ tbody tr:hover td { background: var(--surface2); }
   transition: all 0.15s;
 }
 .close-btn:hover { background: var(--surface2); color: var(--text); }
+.modal-hdr-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.modal-export-btn {
+  height: 30px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 0 10px;
+  white-space: nowrap;
+  transition: all 0.15s;
+}
+.modal-export-btn:hover { border-color: var(--accent); color: var(--accent); }
 .modal-body { padding: 20px 24px; }
 
 /* day summary row */
