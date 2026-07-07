@@ -1421,9 +1421,9 @@ function _fidBuildColMap(headerCols) {
   return map;
 }
 
-// Parse Fidelity Run Date "MM/DD/YYYY" → "YYYY-MM-DD"
+// Parse Fidelity Run Date "MM/DD/YYYY" or "MM-DD-YYYY" → "YYYY-MM-DD"
 function _fidParseDate(s) {
-  const m = (s || '').trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const m = (s || '').trim().match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/);
   if (!m) return '';
   const mo = m[1].padStart(2, '0');
   const dd = m[2].padStart(2, '0');
@@ -1497,9 +1497,9 @@ function importFidelityCSV() {
   const headerCols = _parseCsvLine(allLines[headerIdx].replace(/^﻿/, ''));
   const col        = _fidBuildColMap(headerCols);
 
-  // Data rows: must start with a date in MM/DD/YYYY (skips disclaimer lines).
+  // Data rows: must start with a date in MM/DD/YYYY or MM-DD-YYYY (skips disclaimer lines).
   const dataLines = allLines.slice(headerIdx + 1)
-    .filter(l => /^\s*"?\d{1,2}\/\d{1,2}\/\d{4}/.test(l));
+    .filter(l => /^\s*"?\d{1,2}[\/-]\d{1,2}[\/-]\d{4}/.test(l));
 
   if (!dataLines.length) {
     const panel = document.getElementById('bulk-msg-panel');
