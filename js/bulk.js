@@ -1465,6 +1465,33 @@ function _fidParseOptionSymbol(raw) {
   };
 }
 
+// Parse option details from Fidelity's Description column, e.g.
+// "CALL (SPXW) NEW S & P 500 INDEX JUL 16 26 $7570 (100 SHS)". Used when the
+// Symbol column carries an opaque internal id (" -8781129EY") instead of an
+// OCC-style contract. Returns null for unrecognised input.
+function _fidParseOptionDescription(raw) {
+  const s = (raw || '').trim();
+  const m = s.match(/^(CALL|PUT)\s+\(([A-Z0-9.]+)\)\s+.+?\s([A-Z]{3})\s+(\d{1,2})\s+(\d{2})\s+\$?([\d,]+(?:\.\d+)?)\s*\(\d+\s*SHS\)/i);
+  if (!m) return null;
+
+  const MONTHS = { JAN:'01', FEB:'02', MAR:'03', APR:'04', MAY:'05', JUN:'06',
+                   JUL:'07', AUG:'08', SEP:'09', OCT:'10', NOV:'11', DEC:'12' };
+  const mo = MONTHS[m[3].toUpperCase()];
+  if (!mo) return null;
+
+  const dd   = m[4].padStart(2, '0');
+  const yy   = parseInt(m[5], 10);
+  const year = (yy >= 70 ? 1900 : 2000) + yy;
+
+  return {
+    symbol:      m[2].toUpperCase(),
+    type:        'option',
+    optionType:  m[1].toUpperCase() === 'CALL' ? 'call' : 'put',
+    strikePrice: m[6].replace(/,/g, ''),
+    expiryDate:  `${year}-${mo}-${dd}`,
+  };
+}
+
 // Default time per transaction phase (Fidelity Activity export has no time field).
 function _fidDefaultTime(actionStr) {
   return /CLOSING/i.test(actionStr || '') ? '15:55' : '09:30';
@@ -1548,8 +1575,9 @@ function importFidelityCSV() {
       else { warn.push(`Skipped (unknown action): "${actionStr.slice(0, 40)}"`); continue; }
     }
 
-    // Option vs stock
-    const optInstr = _fidParseOptionSymbol(symbolRaw);
+    // Option vs stock. Newer exports put an opaque id in Symbol and the real
+    // contract details in Description, so fall back to the description parser.
+    const optInstr = _fidParseOptionSymbol(symbolRaw) || _fidParseOptionDescription(description);
     const instr    = optInstr || {
       symbol:      symbolRaw.replace(/^-/, '').toUpperCase(),
       type:        'stock',
