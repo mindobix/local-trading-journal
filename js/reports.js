@@ -165,6 +165,29 @@ function renderRptCards(cards) {
   return html;
 }
 
+// Buckets are always disjoint, so gross win/loss can be reconstructed from the
+// per-bucket averages instead of re-walking every trade.
+function sumRptGroupStats(statsArr) {
+  var total = 0, wins = 0, losses = 0, pnl = 0, grossWin = 0, grossLoss = 0;
+  for (var i = 0; i < statsArr.length; i++) {
+    var s = statsArr[i];
+    total  += s.total;
+    wins   += s.wins;
+    losses += s.losses;
+    pnl    += s.pnl;
+    if (s.avgWin  !== null) grossWin  += s.avgWin  * s.wins;
+    if (s.avgLoss !== null) grossLoss += s.avgLoss * s.losses;
+  }
+  pnl = Math.round(pnl * 100) / 100;
+  return {
+    total: total, wins: wins, losses: losses, pnl: pnl,
+    winRate: total ? parseFloat((wins / total * 100).toFixed(1)) : 0,
+    avgWin:  wins   ? Math.round(grossWin  / wins   * 100) / 100 : null,
+    avgLoss: losses ? Math.round(grossLoss / losses * 100) / 100 : null,
+    avgPnl:  total  ? Math.round(pnl / total * 100) / 100 : 0,
+  };
+}
+
 function renderRptTable(firstHeader, labels, statsArr) {
   var headers = [firstHeader, 'Win %', 'Net P&amp;L', '# Trades', 'Avg P&amp;L', 'Avg Win', 'Avg Loss'];
   var html = '<div class="report-table-section">';
@@ -184,6 +207,18 @@ function renderRptTable(firstHeader, labels, statsArr) {
     html += '<td>' + (s.avgLoss !== null ? '<span class="neg">-' + fmtRptAmt(s.avgLoss) + '</span>' : '\u2014') + '</td>';
     html += '</tr>';
   }
+
+  var tot = sumRptGroupStats(statsArr);
+  html += '<tr class="report-total-row">';
+  html += '<td>Total</td>';
+  html += '<td>' + (tot.total ? tot.winRate + '%' : '<span class="neu">0%</span>') + '</td>';
+  html += '<td>' + fmtRptPnl(tot.pnl) + '</td>';
+  html += '<td>' + tot.total + '</td>';
+  html += '<td>' + (tot.total ? fmtRptPnl(tot.avgPnl) : '—') + '</td>';
+  html += '<td>' + (tot.avgWin  !== null ? '<span class="pos">+' + fmtRptAmt(tot.avgWin)  + '</span>' : '—') + '</td>';
+  html += '<td>' + (tot.avgLoss !== null ? '<span class="neg">-' + fmtRptAmt(tot.avgLoss) + '</span>' : '—') + '</td>';
+  html += '</tr>';
+
   html += '</tbody></table></div></div>';
   return html;
 }
@@ -265,43 +300,22 @@ function renderReportMonths(trades, el) {
 
 // ─── TRADE TIME ───
 
-var RPT_TIME_BUCKETS = [
-  { label: 'Pre-market',     minM:   0, maxM:  570 },
-  { label: '9:30 - 10:00',  minM: 570, maxM:  600 },
-  { label: '10:00 - 11:00', minM: 600, maxM:  660 },
-  { label: '11:00 - 12:00', minM: 660, maxM:  720 },
-  { label: '12:00 - 14:00', minM: 720, maxM:  840 },
-  { label: '14:00 - 16:00', minM: 840, maxM:  960 },
-  { label: 'After hours',   minM: 960, maxM: 1440 },
-];
-
-function rptGetEntryMins(t) {
-  if (!t.legs || !t.legs.length) return null;
-  var first = null;
-  for (var i = 0; i < t.legs.length; i++) {
-    if (t.legs[i].date && t.legs[i].date.indexOf('T') !== -1) { first = t.legs[i]; break; }
-  }
-  if (!first) return null;
-  var tp = first.date.split('T')[1].split(':');
-  var h  = parseInt(tp[0], 10), m = parseInt(tp[1], 10);
-  return (isNaN(h) || isNaN(m)) ? null : h * 60 + m;
-}
-
 function renderReportTradeTime(trades, el) {
-  var byBucket = RPT_TIME_BUCKETS.map(function() { return []; });
+  var timeBuckets = gfSelectedIntervalBuckets();
+  var byBucket = timeBuckets.map(function() { return []; });
   for (var i = 0; i < trades.length; i++) {
-    var mins = rptGetEntryMins(trades[i]);
+    var mins = gfGetEntryMins(trades[i]);
     if (mins === null) continue;
-    for (var b = 0; b < RPT_TIME_BUCKETS.length; b++) {
-      if (mins >= RPT_TIME_BUCKETS[b].minM && mins < RPT_TIME_BUCKETS[b].maxM) {
+    for (var b = 0; b < timeBuckets.length; b++) {
+      if (mins >= timeBuckets[b].minM && mins < timeBuckets[b].maxM) {
         byBucket[b].push(trades[i]); break;
       }
     }
   }
   var statsArr  = byBucket.map(function(g) { return buildRptGroupStats(g); });
-  var labels    = RPT_TIME_BUCKETS.map(function(b) { return b.label; });
+  var labels    = timeBuckets.map(function(b) { return b.label; });
   var cards     = pickRptHighlights(statsArr, 'time', labels);
-  var rowGroups = RPT_TIME_BUCKETS.map(function(b, i) { return { label: b.label, trades: byBucket[i] }; });
+  var rowGroups = timeBuckets.map(function(b, i) { return { label: b.label, trades: byBucket[i] }; });
   el.innerHTML  = renderRptCards(cards) + renderRptTable('Entry Time', labels, statsArr) + renderCrossAnalysis(rowGroups, trades);
 }
 
@@ -620,6 +634,18 @@ function rptBuildColData(trades) {
   return data;
 }
 
+function rptCrossCell(d) {
+  if (!d || d.count === 0) return '<span class="rpt-cross-zero">0</span>';
+  if (activeRiskCrossView === 'trades')  return '<span class="rpt-cross-cnt">' + d.count + '</span>';
+  if (activeRiskCrossView === 'winrate') {
+    var wr = Math.round(d.wins / d.count * 100);
+    return '<span class="' + (wr >= 50 ? 'pos' : 'neg') + '">' + wr + '%</span>';
+  }
+  var pnlRnd = Math.round(d.pnl);
+  var cls = pnlRnd > 0 ? 'pos' : pnlRnd < 0 ? 'neg' : 'neu';
+  return '<span class="' + cls + '">' + (pnlRnd >= 0 ? '+' : '') + '$' + pnlRnd.toLocaleString('en-US') + '</span>';
+}
+
 function renderCrossAnalysis(rowGroups, allTrades) {
   window._rptCrossAllTrades = allTrades;
   var columns = rptGetCrossColumns();
@@ -672,24 +698,19 @@ function renderCrossAnalysis(rowGroups, allTrades) {
 
     html += '<tr><td>' + row.label + '</td>';
     for (var s = 0; s < columns.length; s++) {
-      var d    = colData[columns[s].key];
-      var cell = '';
-      if (!d || d.count === 0) {
-        cell = '<span class="rpt-cross-zero">0</span>';
-      } else if (activeRiskCrossView === 'trades') {
-        cell = '<span class="rpt-cross-cnt">' + d.count + '</span>';
-      } else if (activeRiskCrossView === 'winrate') {
-        var wr = Math.round(d.wins / d.count * 100);
-        cell = '<span class="' + (wr >= 50 ? 'pos' : 'neg') + '">' + wr + '%</span>';
-      } else {
-        var pnlRnd = Math.round(d.pnl);
-        var cls = pnlRnd > 0 ? 'pos' : pnlRnd < 0 ? 'neg' : 'neu';
-        cell = '<span class="' + cls + '">' + (pnlRnd >= 0 ? '+' : '') + '$' + pnlRnd.toLocaleString('en-US') + '</span>';
-      }
-      html += '<td>' + cell + '</td>';
+      html += '<td>' + rptCrossCell(colData[columns[s].key]) + '</td>';
     }
     html += '</tr>';
   }
+
+  var allRowTrades = [];
+  for (var r = 0; r < rowGroups.length; r++) allRowTrades = allRowTrades.concat(rowGroups[r].trades);
+  var totData = rptBuildColData(allRowTrades);
+  html += '<tr class="report-total-row"><td>Total</td>';
+  for (var tc = 0; tc < columns.length; tc++) {
+    html += '<td>' + rptCrossCell(totData[columns[tc].key]) + '</td>';
+  }
+  html += '</tr>';
 
   html += '</tbody></table></div></div>';
   return html;

@@ -115,6 +115,22 @@
   padding: 4px 0;
 }
 .gf-multi-drop.open { display: block; }
+.gf-multi-drop-tall { max-height: 340px; }
+.gf-multi-selectall {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.gf-multi-selectall:hover { background: var(--surface3); }
 .gf-multi-item {
   display: flex;
   align-items: center;

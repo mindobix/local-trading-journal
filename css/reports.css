@@ -159,6 +159,11 @@
 .report-table td:first-child { font-weight: 600; }
 .report-table tbody tr:hover { background: var(--surface2); }
 .report-table tbody tr:last-child td { border-bottom: none; }
+.report-table tbody tr.report-total-row td {
+  background: var(--surface);
+  border-top: 2px solid var(--border);
+  font-weight: 700;
+}
 
 .report-empty {
   color: var(--text-muted);

@@ -3,7 +3,48 @@ let openPosFilterActive = false;
 let gfSelectedTags     = { include: [], exclude: [] };
 let gfSelectedRules    = { include: [], exclude: [] };
 let gfSelectedMistakes = { include: [], exclude: [] };
+let gfSelectedTickers  = null;  // null = all tickers; [] = none
 const gfMultiActiveTab = { tags: 'include', rules: 'include', mistakes: 'include' };
+
+// ─── ENTRY-TIME INTERVALS ───
+let gfIntervalGran = 60;
+let gfIntervalSel  = null;  // null = all intervals; [] = none
+
+function gfFmtMins(m) {
+  const h = Math.floor(m / 60), mm = m % 60;
+  return `${h}:${mm < 10 ? '0' + mm : mm}`;
+}
+
+// Regular session runs 9:30 (570) → 16:00 (960); hourly steps stay clock-aligned
+// so the first bucket is the half-hour 9:30 - 10:00.
+function gfBuildIntervalBuckets(step) {
+  const buckets = [{ label: 'Pre-market', minM: 0, maxM: 570 }];
+  let start = 570;
+  while (start < 960) {
+    const end = step === 60 && start === 570 ? 600 : Math.min(start + step, 960);
+    buckets.push({ label: `${gfFmtMins(start)} - ${gfFmtMins(end)}`, minM: start, maxM: end });
+    start = end;
+  }
+  buckets.push({ label: 'After hours', minM: 960, maxM: 1440 });
+  return buckets;
+}
+
+function gfGetEntryMins(t) {
+  if (!t.legs || !t.legs.length) return null;
+  let first = null;
+  for (const leg of t.legs) {
+    if (leg.date && leg.date.indexOf('T') !== -1) { first = leg; break; }
+  }
+  if (!first) return null;
+  const tp = first.date.split('T')[1].split(':');
+  const h = parseInt(tp[0], 10), m = parseInt(tp[1], 10);
+  return (isNaN(h) || isNaN(m)) ? null : h * 60 + m;
+}
+
+function gfSelectedIntervalBuckets() {
+  const all = gfBuildIntervalBuckets(gfIntervalGran);
+  return gfIntervalSel === null ? all : all.filter(b => gfIntervalSel.includes(b.label));
+}
 
 let filterView = 'calendar'; // which tab's filters are currently shown in the bar
 
@@ -19,6 +60,9 @@ function _captureFilterSnapshot() {
     rules:    { include: [...gfSelectedRules.include],    exclude: [...gfSelectedRules.exclude] },
     mistakes: { include: [...gfSelectedMistakes.include], exclude: [...gfSelectedMistakes.exclude] },
     openPos:  openPosFilterActive,
+    tickers:  gfSelectedTickers === null ? null : [...gfSelectedTickers],
+    intervalGran: gfIntervalGran,
+    intervalSel:  gfIntervalSel === null ? null : [...gfIntervalSel],
   };
 }
 
@@ -37,6 +81,11 @@ function _applyFilterSnapshot(snap) {
   updateGfMultiLabel('tags');
   updateGfMultiLabel('rules');
   updateGfMultiLabel('mistakes');
+  gfSelectedTickers = Array.isArray(snap.tickers) ? [...snap.tickers] : null;
+  updateGfTickerLabel();
+  gfIntervalGran = snap.intervalGran || 60;
+  gfIntervalSel  = Array.isArray(snap.intervalSel) ? [...snap.intervalSel] : null;
+  updateGfIntervalLabel();
   openPosFilterActive = snap.openPos;
   document.getElementById('gf-open-pos-btn')?.classList.toggle('active', snap.openPos);
 }
@@ -123,6 +172,19 @@ function applyGlobalFilter(trades) {
     );
   }
 
+  if (gfSelectedTickers !== null) {
+    filtered = filtered.filter(t => gfSelectedTickers.includes((t.symbol || '').toUpperCase().trim()));
+  }
+
+  if (gfIntervalSel !== null) {
+    const buckets = gfSelectedIntervalBuckets();
+    filtered = filtered.filter(t => {
+      const mins = gfGetEntryMins(t);
+      if (mins === null) return false;
+      return buckets.some(b => mins >= b.minM && mins < b.maxM);
+    });
+  }
+
   if (openPosFilterActive) filtered = filtered.filter(t => getOpenQty(t) > 0);
 
   return filtered;
@@ -165,6 +227,11 @@ function resetGlobalFilters() {
   updateGfMultiLabel('tags');
   updateGfMultiLabel('rules');
   updateGfMultiLabel('mistakes');
+  gfSelectedTickers = null;
+  updateGfTickerLabel();
+  gfIntervalGran = 60;
+  gfIntervalSel  = null;
+  updateGfIntervalLabel();
   document.querySelectorAll('.gf-multi-drop.open').forEach(d => d.classList.remove('open'));
   openPosFilterActive = false;
   document.getElementById('gf-open-pos-btn').classList.remove('active');
@@ -173,6 +240,14 @@ function resetGlobalFilters() {
 }
 
 // ─── MULTI-SELECT DROPDOWN ───
+
+// Rebuilding a drop's markup resets its scroll — restore it so picking an item
+// near the bottom of a long list doesn't yank the user back to the top.
+function _setGfDropHtml(drop, html) {
+  const top = drop.scrollTop;
+  drop.innerHTML = html;
+  drop.scrollTop = top;
+}
 
 function buildGfMultiDrop(type) {
   const items     = type === 'tags' ? loadTags() : type === 'mistakes' ? loadMistakes() : loadRules();
@@ -187,17 +262,167 @@ function buildGfMultiDrop(type) {
   </div>`;
 
   if (!items.length) {
-    drop.innerHTML = tabsHtml + `<div class="gf-multi-empty">No ${type} defined yet</div>`;
+    _setGfDropHtml(drop, tabsHtml + `<div class="gf-multi-empty">No ${type} defined yet</div>`);
     return;
   }
 
-  drop.innerHTML = tabsHtml + items.map(item =>
+  _setGfDropHtml(drop, tabsHtml + items.map(item =>
     `<label class="gf-multi-item">
       <input type="checkbox" class="gf-check-${type}" value="${item.id}" ${sel[activeTab].includes(item.id) ? 'checked' : ''}
         onchange="onGfMultiChange('${type}','${item.id}',this.checked)">
       <span>${item.text}</span>
     </label>`
-  ).join('');
+  ).join(''));
+}
+
+// ─── TICKER DROPDOWN ───
+
+function gfAllTickers() {
+  const seen = new Set();
+  for (const t of load()) {
+    const sym = (t.symbol || '').toUpperCase().trim();
+    if (sym) seen.add(sym);
+  }
+  return [...seen].sort();
+}
+
+function buildGfTickerDrop() {
+  const drop = document.getElementById('gf-tickers-drop');
+  if (!drop) return;
+  const all   = gfAllTickers();
+  const isAll = gfSelectedTickers === null;
+
+  if (!all.length) {
+    _setGfDropHtml(drop, '<div class="gf-multi-empty">No tickers yet</div>');
+    return;
+  }
+
+  _setGfDropHtml(drop,
+    `<button class="gf-multi-selectall" onclick="toggleAllGfTickers(event)">${isAll ? 'Deselect all' : 'Select all'}</button>` +
+    all.map(sym =>
+      `<label class="gf-multi-item">
+        <input type="checkbox" ${isAll || gfSelectedTickers.includes(sym) ? 'checked' : ''}
+          onchange="onGfTickerChange('${sym}',this.checked)">
+        <span>${sym}</span>
+      </label>`
+    ).join(''));
+}
+
+function toggleGfTickerDrop(e) {
+  e.stopPropagation();
+  const drop   = document.getElementById('gf-tickers-drop');
+  const isOpen = drop.classList.contains('open');
+  document.querySelectorAll('.gf-multi-drop.open').forEach(d => d.classList.remove('open'));
+  if (isOpen) return;
+  buildGfTickerDrop();
+  drop.scrollTop = 0;
+  drop.classList.add('open');
+}
+
+function onGfTickerChange(sym, checked) {
+  const all = gfAllTickers();
+  // null means "all", so the first uncheck has to materialise the full list
+  if (gfSelectedTickers === null) gfSelectedTickers = all.slice();
+  if (checked) {
+    if (!gfSelectedTickers.includes(sym)) gfSelectedTickers.push(sym);
+  } else {
+    gfSelectedTickers = gfSelectedTickers.filter(s => s !== sym);
+  }
+  if (gfSelectedTickers.length === all.length) gfSelectedTickers = null;
+  buildGfTickerDrop();
+  updateGfTickerLabel();
+  onGlobalFilterChange();
+}
+
+function toggleAllGfTickers(e) {
+  e.stopPropagation();
+  gfSelectedTickers = gfSelectedTickers === null ? [] : null;
+  buildGfTickerDrop();
+  updateGfTickerLabel();
+  onGlobalFilterChange();
+}
+
+function updateGfTickerLabel() {
+  const label = document.getElementById('gf-tickers-label');
+  const btn   = document.getElementById('gf-tickers-btn');
+  if (!label) return;
+  const n = gfSelectedTickers === null ? 0 : gfSelectedTickers.length;
+  label.textContent = gfSelectedTickers === null ? 'All Tickers'
+                    : n === 0 ? 'No Tickers'
+                    : n === 1 ? gfSelectedTickers[0]
+                    : `${n} Tickers`;
+  if (btn) btn.classList.toggle('active', gfSelectedTickers !== null);
+}
+
+// ─── INTERVAL DROPDOWN ───
+
+function buildGfIntervalDrop() {
+  const drop = document.getElementById('gf-intervals-drop');
+  if (!drop) return;
+  const all   = gfBuildIntervalBuckets(gfIntervalGran);
+  const isAll = gfIntervalSel === null;
+
+  _setGfDropHtml(drop,
+    `<button class="gf-multi-selectall" onclick="toggleAllGfIntervals(event)">${isAll ? 'Deselect all' : 'Select all'}</button>` +
+    all.map(b =>
+      `<label class="gf-multi-item">
+        <input type="checkbox" ${isAll || gfIntervalSel.includes(b.label) ? 'checked' : ''}
+          onchange="onGfIntervalChange('${b.label}',this.checked)">
+        <span>${b.label}</span>
+      </label>`
+    ).join(''));
+}
+
+function toggleGfIntervalDrop(e) {
+  e.stopPropagation();
+  buildGfIntervalDrop();
+  const drop   = document.getElementById('gf-intervals-drop');
+  const isOpen = drop.classList.contains('open');
+  document.querySelectorAll('.gf-multi-drop.open').forEach(d => d.classList.remove('open'));
+  if (!isOpen) drop.classList.add('open');
+}
+
+function onGfIntervalGranChange(val) {
+  gfIntervalGran = parseInt(val, 10);
+  gfIntervalSel  = null;   // bucket labels differ per granularity
+  updateGfIntervalLabel();
+  onGlobalFilterChange();
+}
+
+function onGfIntervalChange(label, checked) {
+  const all = gfBuildIntervalBuckets(gfIntervalGran).map(b => b.label);
+  // null means "all", so the first uncheck has to materialise the full list
+  if (gfIntervalSel === null) gfIntervalSel = all.slice();
+  if (checked) {
+    if (!gfIntervalSel.includes(label)) gfIntervalSel.push(label);
+  } else {
+    gfIntervalSel = gfIntervalSel.filter(l => l !== label);
+  }
+  if (gfIntervalSel.length === all.length) gfIntervalSel = null;
+  buildGfIntervalDrop();
+  updateGfIntervalLabel();
+  onGlobalFilterChange();
+}
+
+function toggleAllGfIntervals(e) {
+  e.stopPropagation();
+  gfIntervalSel = gfIntervalSel === null ? [] : null;
+  buildGfIntervalDrop();
+  updateGfIntervalLabel();
+  onGlobalFilterChange();
+}
+
+function updateGfIntervalLabel() {
+  const label = document.getElementById('gf-intervals-label');
+  const btn   = document.getElementById('gf-intervals-btn');
+  const gran  = document.getElementById('gf-interval-gran');
+  if (gran) gran.value = String(gfIntervalGran);
+  if (!label) return;
+  const n = gfIntervalSel === null ? 0 : gfIntervalSel.length;
+  label.textContent = gfIntervalSel === null ? 'All Intervals'
+                    : n === 0 ? 'No Intervals'
+                    : `${n} Interval${n !== 1 ? 's' : ''}`;
+  if (btn) btn.classList.toggle('active', gfIntervalSel !== null);
 }
 
 function setGfMultiTab(type, tab) {
@@ -263,6 +488,12 @@ function updateFilterBarContext(view) {
   if (tagsWrap)     tagsWrap.style.display      = isPlan ? 'none' : '';
   if (rulesWrap)    rulesWrap.style.display     = isPlan ? 'none' : '';
   if (mistakesWrap) mistakesWrap.style.display  = isPlan ? 'none' : '';
+  const tickersWrap  = document.getElementById('gf-tickers-wrap');
+  const intervalWrap = document.getElementById('gf-intervals-wrap');
+  const granEl       = document.getElementById('gf-interval-gran');
+  if (tickersWrap)  tickersWrap.style.display  = isPlan ? 'none' : '';
+  if (intervalWrap) intervalWrap.style.display = isPlan ? 'none' : '';
+  if (granEl)       granEl.style.display       = isPlan ? 'none' : '';
   renderActiveFilters();
 }
 
@@ -372,6 +603,28 @@ function renderActiveFilters() {
     );
   }
 
+  if (gfSelectedTickers !== null) {
+    const label = gfSelectedTickers.length === 0 ? 'No tickers'
+                : gfSelectedTickers.length <= 3 ? gfSelectedTickers.join(', ')
+                : `${gfSelectedTickers.length} tickers`;
+    parts.push(
+      `<span class="gf-chip">Tickers: ${label}
+        <button class="gf-chip-x" onclick="clearGfChip('tickers')" title="Remove">&#10005;</button>
+      </span>`
+    );
+  }
+
+  if (gfIntervalSel !== null) {
+    const label = gfIntervalSel.length === 0 ? 'No intervals'
+                : gfIntervalSel.length <= 2 ? gfIntervalSel.join(', ')
+                : `${gfIntervalSel.length} intervals`;
+    parts.push(
+      `<span class="gf-chip">Entry: ${label}
+        <button class="gf-chip-x" onclick="clearGfChip('intervals')" title="Remove">&#10005;</button>
+      </span>`
+    );
+  }
+
   if (openPosFilterActive) parts.push(
     `<span class="gf-chip">Open Positions
       <button class="gf-chip-x" onclick="clearGfChip('openpos')" title="Remove">&#10005;</button>
@@ -412,6 +665,16 @@ function clearGfChip(type, id) {
     case 'rule-excl':
       gfSelectedRules.exclude = gfSelectedRules.exclude.filter(x => x !== id);
       updateGfMultiLabel('rules');
+      break;
+    case 'tickers':
+      gfSelectedTickers = null;
+      buildGfTickerDrop();
+      updateGfTickerLabel();
+      break;
+    case 'intervals':
+      gfIntervalSel = null;
+      buildGfIntervalDrop();
+      updateGfIntervalLabel();
       break;
     case 'mistake-incl':
       gfSelectedMistakes.include = gfSelectedMistakes.include.filter(x => x !== id);
