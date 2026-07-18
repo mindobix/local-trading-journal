@@ -136,6 +136,7 @@
     <div class="gf-multi-drop gf-multi-drop-tall" id="gf-tickers-drop" onclick="event.stopPropagation()"></div>
   </div>
   <select id="gf-interval-gran" onchange="onGfIntervalGranChange(this.value)">
+    <option value="5">5 mins</option>
     <option value="15">15 mins</option>
     <option value="30">30 mins</option>
     <option value="60" selected>1 hour</option>
@@ -147,7 +148,7 @@
     </button>
     <!-- stop the click here: the list is rebuilt on every change, and the
          outside-click handler in app.js would otherwise close it -->
-    <div class="gf-multi-drop" id="gf-intervals-drop" onclick="event.stopPropagation()"></div>
+    <div class="gf-multi-drop gf-multi-drop-tall" id="gf-intervals-drop" onclick="event.stopPropagation()"></div>
   </div>
   <div class="gf-multiselect" id="gf-tags-wrap">
     <button type="button" class="gf-multi-btn" id="gf-tags-btn" onclick="toggleGfMultiDrop('tags')">
