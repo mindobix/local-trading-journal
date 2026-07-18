@@ -110,13 +110,28 @@ function getDateRange(preset) {
   return null;
 }
 
+function gfApplyDateFilter(trades) {
+  const fDate = document.getElementById('gf-date')?.value || '';
+  const fFrom = document.getElementById('gf-from')?.value || '';
+  const fTo   = document.getElementById('gf-to')?.value   || '';
+
+  if (fDate && fDate !== 'custom') {
+    const range = getDateRange(fDate);
+    return range ? trades.filter(t => t.date >= range.from && t.date <= range.to) : trades;
+  }
+  if (fDate === 'custom') {
+    let out = trades;
+    if (fFrom) out = out.filter(t => t.date >= fFrom);
+    if (fTo)   out = out.filter(t => t.date <= fTo);
+    return out;
+  }
+  return trades;
+}
+
 function applyGlobalFilter(trades) {
   const srch  = (document.getElementById('gf-srch')?.value  || '').toLowerCase();
   const fType = document.getElementById('gf-type')?.value  || '';
   const fSide = document.getElementById('gf-side')?.value  || '';
-  const fDate = document.getElementById('gf-date')?.value  || '';
-  const fFrom = document.getElementById('gf-from')?.value  || '';
-  const fTo   = document.getElementById('gf-to')?.value    || '';
 
   let filtered = trades;
 
@@ -131,13 +146,7 @@ function applyGlobalFilter(trades) {
     return t.side === fSide;
   });
 
-  if (fDate && fDate !== 'custom') {
-    const range = getDateRange(fDate);
-    if (range) filtered = filtered.filter(t => t.date >= range.from && t.date <= range.to);
-  } else if (fDate === 'custom') {
-    if (fFrom) filtered = filtered.filter(t => t.date >= fFrom);
-    if (fTo)   filtered = filtered.filter(t => t.date <= fTo);
-  }
+  filtered = gfApplyDateFilter(filtered);
 
   if (gfSelectedTags.include.length) {
     filtered = filtered.filter(t =>
@@ -199,6 +208,9 @@ function toggleOpenPositions() {
 
 function onGlobalFilterChange() {
   if (typeof tradePage !== 'undefined') tradePage = 1;
+  // the ticker list is date-scoped, so keep an open drop in sync
+  const tickerDrop = document.getElementById('gf-tickers-drop');
+  if (tickerDrop?.classList.contains('open')) buildGfTickerDrop();
   renderActiveFilters();
   refreshAllViews();
   dbPutSetting('filterState', _captureFilterSnapshot()).catch(console.error);
@@ -277,9 +289,11 @@ function buildGfMultiDrop(type) {
 
 // ─── TICKER DROPDOWN ───
 
+// Scoped to the active date range so the list only offers symbols actually
+// traded in the period the user is looking at.
 function gfAllTickers() {
   const seen = new Set();
-  for (const t of load()) {
+  for (const t of gfApplyDateFilter(load())) {
     const sym = (t.symbol || '').toUpperCase().trim();
     if (sym) seen.add(sym);
   }
