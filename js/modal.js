@@ -26,11 +26,17 @@ function openWeek(startIso, endIso) {
 }
 
 function refreshWeekModal() {
-  const trades = load().filter(t => {
+  const weekTrades = load().filter(t => {
     if (t.legs && t.legs.length)
       return t.legs.some(l => l.date && l.date.split('T')[0] >= activeWeekStart && l.date.split('T')[0] <= activeWeekEnd);
     return t.date >= activeWeekStart && t.date <= activeWeekEnd;
   });
+  // Match the calendar cell the user tapped, which is itself filtered
+  const trades = applyGlobalFilter(weekTrades);
+  const hidden = weekTrades.length - trades.length;
+  const hiddenNote = hidden
+    ? `<div class="day-hidden-note">${hidden} trade${hidden !== 1 ? 's' : ''} this week hidden by active filters</div>`
+    : '';
   const pnl    = trades.reduce((s, t) => s + getPnl(t), 0);
   const wins   = trades.filter(t => getPnl(t) > 0).length;
   const loss   = trades.filter(t => getPnl(t) < 0).length;
@@ -55,7 +61,7 @@ function refreshWeekModal() {
     </div>`;
 
   if (!trades.length) {
-    document.getElementById('trade-list').innerHTML =
+    document.getElementById('trade-list').innerHTML = hiddenNote ||
       `<div style="text-align:center;padding:20px 0 12px;color:var(--text-muted);font-size:13px">No trades this week — add one below.</div>`;
     return;
   }
@@ -65,7 +71,7 @@ function refreshWeekModal() {
     if (!byDate[t.date]) byDate[t.date] = [];
     byDate[t.date].push(t);
   }
-  document.getElementById('trade-list').innerHTML = Object.keys(byDate).sort().map(date => {
+  document.getElementById('trade-list').innerHTML = hiddenNote + Object.keys(byDate).sort().map(date => {
     const [y, m, d] = date.split('-');
     const dateLabel = new Date(+y, +m - 1, +d).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
     return `<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-muted);margin:10px 0 6px">${dateLabel}</div>
@@ -187,6 +193,9 @@ function exportDayTradesCSV() {
     fileTag = activeDate;
   }
 
+  // Export what the dialog is showing, not the unfiltered day
+  trades = applyGlobalFilter(trades);
+
   if (!trades.length) {
     alert('No trades to export.');
     return;
@@ -243,11 +252,17 @@ function openDay(dateStr) {
 
 function refreshDayModal() {
   // Include any trade that has at least one leg on this date (multi-day trades included)
-  const trades = load().filter(t => {
+  const dayTrades = load().filter(t => {
     if (t.legs && t.legs.length)
       return t.legs.some(l => l.date && l.date.split('T')[0] === activeDate);
     return t.date === activeDate;
   });
+  // Match the calendar cell the user tapped, which is itself filtered
+  const trades = applyGlobalFilter(dayTrades);
+  const hidden = dayTrades.length - trades.length;
+  const hiddenNote = hidden
+    ? `<div class="day-hidden-note">${hidden} trade${hidden !== 1 ? 's' : ''} on this day hidden by active filters</div>`
+    : '';
 
   // Day P&L = only the realized P&L settled on this specific date
   let pnl = 0, wins = 0, loss = 0;
@@ -280,7 +295,7 @@ function refreshDayModal() {
     </div>`;
 
   if (!trades.length) {
-    document.getElementById('trade-list').innerHTML =
+    document.getElementById('trade-list').innerHTML = hiddenNote ||
       `<div style="text-align:center;padding:20px 0 12px;color:var(--text-muted);font-size:13px">No trades yet — add one below.</div>`;
     return;
   }
@@ -307,7 +322,7 @@ function refreshDayModal() {
     html.push(tradeItemHtml(t));
     rendered.add(t.id);
   }
-  document.getElementById('trade-list').innerHTML = html.join('');
+  document.getElementById('trade-list').innerHTML = hiddenNote + html.join('');
 }
 
 // Render a strategy wrapper around its sibling trades for the daily dialog.

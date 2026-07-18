@@ -203,6 +203,15 @@ tbody tr:hover td { background: var(--surface2); }
 }
 .ds-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); margin-bottom: 5px; }
 .ds-value { font-size: 18px; font-weight: 800; }
+.day-hidden-note {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border-radius: var(--radius);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: 12px;
+}
 
 /* trade list inside modal */
 .trade-item {
