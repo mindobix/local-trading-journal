@@ -121,6 +121,13 @@
       </div>
     </div>
   </div>
+  <div class="gf-multiselect" id="gf-dows-wrap">
+    <button type="button" class="gf-multi-btn" id="gf-dows-btn" onclick="toggleGfDowDrop(event)">
+      <span id="gf-dows-label">All Days</span>
+      <span class="gf-multi-caret">&#9660;</span>
+    </button>
+    <div class="gf-multi-drop" id="gf-dows-drop" onclick="event.stopPropagation()"></div>
+  </div>
   <div class="gf-multiselect" id="gf-tickers-wrap">
     <button type="button" class="gf-multi-btn" id="gf-tickers-btn" onclick="toggleGfTickerDrop(event)">
       <span id="gf-tickers-label">All Tickers</span>

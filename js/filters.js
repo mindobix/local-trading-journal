@@ -4,6 +4,7 @@ let gfSelectedTags     = { include: [], exclude: [] };
 let gfSelectedRules    = { include: [], exclude: [] };
 let gfSelectedMistakes = { include: [], exclude: [] };
 let gfSelectedTickers  = null;  // null = all tickers; [] = none
+let gfSelectedDows     = null;  // null = all weekdays; [] = none
 const gfMultiActiveTab = { tags: 'include', rules: 'include', mistakes: 'include' };
 
 // ─── ENTRY-TIME INTERVALS ───
@@ -61,6 +62,7 @@ function _captureFilterSnapshot() {
     mistakes: { include: [...gfSelectedMistakes.include], exclude: [...gfSelectedMistakes.exclude] },
     openPos:  openPosFilterActive,
     tickers:  gfSelectedTickers === null ? null : [...gfSelectedTickers],
+    dows:     gfSelectedDows === null ? null : [...gfSelectedDows],
     intervalGran: gfIntervalGran,
     intervalSel:  gfIntervalSel === null ? null : [...gfIntervalSel],
   };
@@ -83,6 +85,8 @@ function _applyFilterSnapshot(snap) {
   updateGfMultiLabel('mistakes');
   gfSelectedTickers = Array.isArray(snap.tickers) ? [...snap.tickers] : null;
   updateGfTickerLabel();
+  gfSelectedDows = Array.isArray(snap.dows) ? [...snap.dows] : null;
+  updateGfDowLabel();
   gfIntervalGran = snap.intervalGran || 60;
   gfIntervalSel  = Array.isArray(snap.intervalSel) ? [...snap.intervalSel] : null;
   updateGfIntervalLabel();
@@ -185,6 +189,13 @@ function applyGlobalFilter(trades) {
     filtered = filtered.filter(t => gfSelectedTickers.includes((t.symbol || '').toUpperCase().trim()));
   }
 
+  if (gfSelectedDows !== null) {
+    filtered = filtered.filter(t => {
+      const dow = gfGetDow(t);
+      return dow !== null && gfSelectedDows.includes(dow);
+    });
+  }
+
   if (gfIntervalSel !== null) {
     const buckets = gfSelectedIntervalBuckets();
     filtered = filtered.filter(t => {
@@ -241,6 +252,8 @@ function resetGlobalFilters() {
   updateGfMultiLabel('mistakes');
   gfSelectedTickers = null;
   updateGfTickerLabel();
+  gfSelectedDows = null;
+  updateGfDowLabel();
   gfIntervalGran = 60;
   gfIntervalSel  = null;
   updateGfIntervalLabel();
@@ -285,6 +298,86 @@ function buildGfMultiDrop(type) {
       <span>${item.text}</span>
     </label>`
   ).join(''));
+}
+
+// ─── DAY-OF-WEEK DROPDOWN ───
+
+const GF_DOWS = [
+  { n: 1, label: 'Monday' },
+  { n: 2, label: 'Tuesday' },
+  { n: 3, label: 'Wednesday' },
+  { n: 4, label: 'Thursday' },
+  { n: 5, label: 'Friday' },
+];
+
+// Parsed as local parts — `new Date('YYYY-MM-DD')` is UTC and can land on the
+// previous day west of Greenwich.
+function gfGetDow(t) {
+  const ds = t.date || '';
+  if (ds.length < 10) return null;
+  const [y, m, d] = ds.slice(0, 10).split('-').map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d).getDay();
+}
+
+function buildGfDowDrop() {
+  const drop = document.getElementById('gf-dows-drop');
+  if (!drop) return;
+  const isAll = gfSelectedDows === null;
+
+  _setGfDropHtml(drop,
+    `<button class="gf-multi-selectall" onclick="toggleAllGfDows(event)">${isAll ? 'Deselect all' : 'Select all'}</button>` +
+    GF_DOWS.map(d =>
+      `<label class="gf-multi-item">
+        <input type="checkbox" ${isAll || gfSelectedDows.includes(d.n) ? 'checked' : ''}
+          onchange="onGfDowChange(${d.n},this.checked)">
+        <span>${d.label}</span>
+      </label>`
+    ).join(''));
+}
+
+function toggleGfDowDrop(e) {
+  e.stopPropagation();
+  const drop   = document.getElementById('gf-dows-drop');
+  const isOpen = drop.classList.contains('open');
+  document.querySelectorAll('.gf-multi-drop.open').forEach(d => d.classList.remove('open'));
+  if (isOpen) return;
+  buildGfDowDrop();
+  drop.classList.add('open');
+}
+
+function onGfDowChange(n, checked) {
+  // null means "all", so the first uncheck has to materialise the full list
+  if (gfSelectedDows === null) gfSelectedDows = GF_DOWS.map(d => d.n);
+  if (checked) {
+    if (!gfSelectedDows.includes(n)) gfSelectedDows.push(n);
+  } else {
+    gfSelectedDows = gfSelectedDows.filter(x => x !== n);
+  }
+  if (gfSelectedDows.length === GF_DOWS.length) gfSelectedDows = null;
+  buildGfDowDrop();
+  updateGfDowLabel();
+  onGlobalFilterChange();
+}
+
+function toggleAllGfDows(e) {
+  e.stopPropagation();
+  gfSelectedDows = gfSelectedDows === null ? [] : null;
+  buildGfDowDrop();
+  updateGfDowLabel();
+  onGlobalFilterChange();
+}
+
+function updateGfDowLabel() {
+  const label = document.getElementById('gf-dows-label');
+  const btn   = document.getElementById('gf-dows-btn');
+  if (!label) return;
+  const n = gfSelectedDows === null ? 0 : gfSelectedDows.length;
+  label.textContent = gfSelectedDows === null ? 'All Days'
+                    : n === 0 ? 'No Days'
+                    : n === 1 ? GF_DOWS.find(d => d.n === gfSelectedDows[0]).label
+                    : `${n} Days`;
+  if (btn) btn.classList.toggle('active', gfSelectedDows !== null);
 }
 
 // ─── TICKER DROPDOWN ───
@@ -505,6 +598,8 @@ function updateFilterBarContext(view) {
   const tickersWrap  = document.getElementById('gf-tickers-wrap');
   const intervalWrap = document.getElementById('gf-intervals-wrap');
   const granEl       = document.getElementById('gf-interval-gran');
+  const dowsWrap = document.getElementById('gf-dows-wrap');
+  if (dowsWrap)     dowsWrap.style.display     = isPlan ? 'none' : '';
   if (tickersWrap)  tickersWrap.style.display  = isPlan ? 'none' : '';
   if (intervalWrap) intervalWrap.style.display = isPlan ? 'none' : '';
   if (granEl)       granEl.style.display       = isPlan ? 'none' : '';
@@ -628,6 +723,16 @@ function renderActiveFilters() {
     );
   }
 
+  if (gfSelectedDows !== null) {
+    const label = gfSelectedDows.length === 0 ? 'No days'
+                : gfSelectedDows.map(n => GF_DOWS.find(d => d.n === n).label).join(', ');
+    parts.push(
+      `<span class="gf-chip">Days: ${label}
+        <button class="gf-chip-x" onclick="clearGfChip('dows')" title="Remove">&#10005;</button>
+      </span>`
+    );
+  }
+
   if (gfIntervalSel !== null) {
     const label = gfIntervalSel.length === 0 ? 'No intervals'
                 : gfIntervalSel.length <= 2 ? gfIntervalSel.join(', ')
@@ -684,6 +789,11 @@ function clearGfChip(type, id) {
       gfSelectedTickers = null;
       buildGfTickerDrop();
       updateGfTickerLabel();
+      break;
+    case 'dows':
+      gfSelectedDows = null;
+      buildGfDowDrop();
+      updateGfDowLabel();
       break;
     case 'intervals':
       gfIntervalSel = null;
