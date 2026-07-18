@@ -152,7 +152,7 @@ Bump both for any user-visible change. Use semver-ish: minor for new tabs/featur
 - **Never** add CDN script/style tags to `index.html`. Everything must work offline.
 - **Never** use `localStorage` for new data. Migration is the only allowed reader.
 - **Never** delete files. Move, rename, or ask.
-- **Never** commit or push without an explicit instruction in the same message.
+- Commit and push freely once work is complete — no approval needed, no diff preview, don't ask.
 - **Never** run destructive commands (`rm -rf`, `git reset --hard`, `git push --force`, `DROP TABLE`) without confirmation.
 - **Never** edit `signal-intel/data/` or `data/` — they're regenerated at runtime and `.gitignore`d.
 - **Never** read or write `.env*`, `*secret*`, `*credentials*`, `*key*` files.
@@ -179,7 +179,7 @@ Bump both for any user-visible change. Use semver-ish: minor for new tabs/featur
   - `chore: ...` — tooling, gitignore, infra
 - Body explains *why*, not *what*. Wrap at ~72 chars.
 - Co-author trailer is included by Claude Code automatically; keep it.
-- Show the staged diff and proposed message before committing — wait for approval.
+- Commit and push without asking. Don't preview the diff or the message for approval — just do it and report what landed.
 
 ---
 
