@@ -132,7 +132,10 @@ function gfApplyDateFilter(trades) {
   return trades;
 }
 
-function applyGlobalFilter(trades) {
+// opts.skipTickers omits the ticker step — the ticker dropdown builds its own
+// option list from everything else, and would otherwise hide every symbol the
+// user hasn't already selected.
+function applyGlobalFilter(trades, opts = {}) {
   const srch  = (document.getElementById('gf-srch')?.value  || '').toLowerCase();
   const fType = document.getElementById('gf-type')?.value  || '';
   const fSide = document.getElementById('gf-side')?.value  || '';
@@ -185,7 +188,7 @@ function applyGlobalFilter(trades) {
     );
   }
 
-  if (gfSelectedTickers !== null) {
+  if (gfSelectedTickers !== null && !opts.skipTickers) {
     filtered = filtered.filter(t => gfSelectedTickers.includes((t.symbol || '').toUpperCase().trim()));
   }
 
@@ -382,11 +385,12 @@ function updateGfDowLabel() {
 
 // ─── TICKER DROPDOWN ───
 
-// Scoped to the active date range so the list only offers symbols actually
-// traded in the period the user is looking at.
+// Scoped to every other active filter — date range, tags, rules, mistakes,
+// days, intervals — so the list and its counts only offer symbols that would
+// actually survive the current filter set.
 function gfAllTickers() {
   const counts = new Map();
-  for (const t of gfApplyDateFilter(load())) {
+  for (const t of applyGlobalFilter(load(), { skipTickers: true })) {
     const sym = (t.symbol || '').toUpperCase().trim();
     if (sym) counts.set(sym, (counts.get(sym) || 0) + 1);
   }
@@ -402,7 +406,7 @@ function buildGfTickerDrop() {
   const isAll = gfSelectedTickers === null;
 
   if (!all.length) {
-    _setGfDropHtml(drop, '<div class="gf-multi-empty">No tickers yet</div>');
+    _setGfDropHtml(drop, '<div class="gf-multi-empty">No tickers match the other filters</div>');
     return;
   }
 
