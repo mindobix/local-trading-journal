@@ -385,12 +385,14 @@ function updateGfDowLabel() {
 // Scoped to the active date range so the list only offers symbols actually
 // traded in the period the user is looking at.
 function gfAllTickers() {
-  const seen = new Set();
+  const counts = new Map();
   for (const t of gfApplyDateFilter(load())) {
     const sym = (t.symbol || '').toUpperCase().trim();
-    if (sym) seen.add(sym);
+    if (sym) counts.set(sym, (counts.get(sym) || 0) + 1);
   }
-  return [...seen].sort();
+  return [...counts.entries()]
+    .map(([sym, count]) => ({ sym, count }))
+    .sort((a, b) => a.sym.localeCompare(b.sym));
 }
 
 function buildGfTickerDrop() {
@@ -406,11 +408,11 @@ function buildGfTickerDrop() {
 
   _setGfDropHtml(drop,
     `<button class="gf-multi-selectall" onclick="toggleAllGfTickers(event)">${isAll ? 'Deselect all' : 'Select all'}</button>` +
-    all.map(sym =>
+    all.map(({ sym, count }) =>
       `<label class="gf-multi-item">
         <input type="checkbox" ${isAll || gfSelectedTickers.includes(sym) ? 'checked' : ''}
           onchange="onGfTickerChange('${sym}',this.checked)">
-        <span>${sym}</span>
+        <span>${sym} <span class="gf-multi-count">(${count} ${count === 1 ? 'trade' : 'trades'})</span></span>
       </label>`
     ).join(''));
 }
@@ -427,7 +429,7 @@ function toggleGfTickerDrop(e) {
 }
 
 function onGfTickerChange(sym, checked) {
-  const all = gfAllTickers();
+  const all = gfAllTickers().map(t => t.sym);
   // null means "all", so the first uncheck has to materialise the full list
   if (gfSelectedTickers === null) gfSelectedTickers = all.slice();
   if (checked) {

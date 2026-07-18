@@ -131,6 +131,7 @@
   cursor: pointer;
 }
 .gf-multi-selectall:hover { background: var(--surface3); }
+.gf-multi-count { color: var(--text-muted); font-size: 12px; }
 .gf-multi-item {
   display: flex;
   align-items: center;
