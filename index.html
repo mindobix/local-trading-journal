@@ -154,21 +154,21 @@
       <span id="gf-tags-label">All Tags</span>
       <span class="gf-multi-caret">&#9660;</span>
     </button>
-    <div class="gf-multi-drop" id="gf-tags-drop"></div>
+    <div class="gf-multi-drop" id="gf-tags-drop" onclick="event.stopPropagation()"></div>
   </div>
   <div class="gf-multiselect" id="gf-rules-wrap">
     <button type="button" class="gf-multi-btn" id="gf-rules-btn" onclick="toggleGfMultiDrop('rules')">
       <span id="gf-rules-label">All Rules</span>
       <span class="gf-multi-caret">&#9660;</span>
     </button>
-    <div class="gf-multi-drop" id="gf-rules-drop"></div>
+    <div class="gf-multi-drop" id="gf-rules-drop" onclick="event.stopPropagation()"></div>
   </div>
   <div class="gf-multiselect" id="gf-mistakes-wrap">
     <button type="button" class="gf-multi-btn" id="gf-mistakes-btn" onclick="toggleGfMultiDrop('mistakes')">
       <span id="gf-mistakes-label">All Mistakes</span>
       <span class="gf-multi-caret">&#9660;</span>
     </button>
-    <div class="gf-multi-drop" id="gf-mistakes-drop"></div>
+    <div class="gf-multi-drop" id="gf-mistakes-drop" onclick="event.stopPropagation()"></div>
   </div>
   <button class="open-pos-filter-btn" id="gf-open-pos-btn" onclick="toggleOpenPositions()">Open Positions</button>
   <button class="gf-reset-btn" onclick="resetGlobalFilters()" title="Clear all filters">&#10005; Reset</button>
